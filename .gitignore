@@ -1,0 +1,51 @@
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (交易数据和持久化订单)
+data/orders/
+data/trades/
+
+# 临时文件
+*.tmp
+*.bak
+*.swp
+*~
+
+# 编译后的 class 文件
+*.class
+
+# JAR
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
