@@ -14,6 +14,8 @@ import com.trade.quant.strategy.StrategyEngine;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 /**
  * 量化交易系统主类
@@ -46,6 +48,9 @@ public class TradingSystemMain {
         System.out.println("启动回测模式...\n");
 
         try {
+            // 加载配置
+            ConfigManager configManager = ConfigManager.getInstance();
+
             // 配置回测参数
             Symbol symbol = Symbol.of("BTC-USDT");
             Interval interval = Interval.FIVE_MINUTES;
@@ -53,24 +58,28 @@ public class TradingSystemMain {
             BacktestConfig config = BacktestConfig.builder()
                     .symbol(symbol)
                     .interval(interval)
-                    .startTime(Instant.parse("2024-01-01T00:00:00Z"))
-                    .endTime(Instant.parse("2024-12-01T00:00:00Z"))
-                    .initialCapital(BigDecimal.valueOf(10000))
-                    .makerFee(BigDecimal.valueOf(0.0002))
-                    .takerFee(BigDecimal.valueOf(0.0004))
-                    .slippage(BigDecimal.valueOf(0.0005))
-                    .leverage(BigDecimal.ONE)
+                    .startTime(Instant.parse(configManager.getProperty("backtest.start.time")))
+                    .endTime(Instant.parse(configManager.getProperty("backtest.end.time")))
+                    .initialCapital(new BigDecimal(configManager.getProperty("backtest.initial.capital")))
+                    .makerFee(new BigDecimal(configManager.getProperty("backtest.maker.fee")))
+                    .takerFee(new BigDecimal(configManager.getProperty("backtest.taker.fee")))
+                    .slippage(new BigDecimal(configManager.getProperty("backtest.slippage")))
+                    .leverage(new BigDecimal(configManager.getProperty("backtest.leverage")))
                     .build();
 
-            // 创建交易所
+            // 创建交易所并从配置文件加载 API 密钥
             Exchange exchange = ExchangeFactory.createBinance();
-            exchange.setApiKey("YOUR_API_KEY", "YOUR_SECRET_KEY", null);
+            exchange.setApiKey(
+                configManager.getBinanceApiKey(),
+                configManager.getBinanceApiSecret(),
+                null
+            );
 
-            // 创建策略
+            // 创建策略（从配置文件加载参数）
             StrategyConfig strategyConfig = StrategyConfig.builder()
-                    .riskPerTrade(BigDecimal.valueOf(0.01))
-                    .cooldownBars(3)
-                    .useATRStopLoss(true)
+                    .riskPerTrade(new BigDecimal(configManager.getProperty("risk.per.trade")))
+                    .cooldownBars(configManager.getIntProperty("strategy.cooldown.bars", 3))
+                    .useATRStopLoss(configManager.getBooleanProperty("strategy.use.atr.stoploss", true))
                     .build();
 
             DualMovingAverageStrategy strategy = new DualMovingAverageStrategy(
@@ -107,11 +116,14 @@ public class TradingSystemMain {
 
         /*
         try {
-            // 创建交易所
+            // 加载配置
+            ConfigManager configManager = ConfigManager.getInstance();
+
+            // 创建交易所并从配置文件加载 API 密钥
             Exchange exchange = ExchangeFactory.createBinance();
             exchange.setApiKey(
-                    System.getenv("BINANCE_API_KEY"),
-                    System.getenv("BINANCE_SECRET_KEY"),
+                    configManager.getBinanceApiKey(),
+                    configManager.getBinanceApiSecret(),
                     null
             );
 
@@ -123,11 +135,11 @@ public class TradingSystemMain {
             Interval interval = Interval.FIVE_MINUTES;
             marketDataManager.initializeHistoricalData(symbol, interval, 1000);
 
-            // 创建策略
+            // 创建策略（从配置文件加载参数）
             StrategyConfig strategyConfig = StrategyConfig.builder()
-                    .riskPerTrade(BigDecimal.valueOf(0.01))
-                    .cooldownBars(3)
-                    .useATRStopLoss(true)
+                    .riskPerTrade(new BigDecimal(configManager.getProperty("risk.per.trade")))
+                    .cooldownBars(configManager.getIntProperty("strategy.cooldown.bars", 3))
+                    .useATRStopLoss(configManager.getBooleanProperty("strategy.use.atr.stoploss", true))
                     .build();
 
             DualMovingAverageStrategy strategy = new DualMovingAverageStrategy(
@@ -186,8 +198,20 @@ public class TradingSystemMain {
         System.out.println("  java -jar quant-trading.jar backtest  运行回测");
         System.out.println("  java -jar quant-trading.jar live      启动实盘");
         System.out.println();
-        System.out.println("环境变量:");
-        System.out.println("  BINANCE_API_KEY       Binance API Key");
-        System.out.println("  BINANCE_SECRET_KEY    Binance Secret Key");
+        System.out.println("配置文件:");
+        System.out.println("  首次运行会从 config.template.properties 创建 config.properties");
+        System.out.println("  请在 config.properties 中配置您的 API 密钥");
+        System.out.println();
+        System.out.println("配置项:");
+        System.out.println("  binance.api.key       Binance API Key");
+        System.out.println("  binance.api.secret    Binance API Secret");
+        System.out.println("  risk.per.trade        每笔交易风险比例 (如: 0.01 表示 1%)");
+        System.out.println("  backtest.start.time   回测开始时间 (如: 2024-01-01T00:00:00Z)");
+        System.out.println("  backtest.end.time     回测结束时间 (如: 2024-12-01T00:00:00Z)");
+        System.out.println();
+        System.out.println("安全提示:");
+        System.out.println("  - 请勿将 config.properties 提交到版本控制系统");
+        System.out.println("  - config.properties 已被 .gitignore 忽略");
+        System.out.println("  - 仅提交 config.template.properties 模板文件");
     }
 }

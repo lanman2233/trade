@@ -33,6 +33,11 @@ Thumbs.db
 data/orders/
 data/trades/
 
+# 敏感配置文件 (包含 API 密钥等敏感信息)
+config.properties
+# 保留配置模板文件供团队使用
+!config.template.properties
+
 # 临时文件
 *.tmp
 *.bak
