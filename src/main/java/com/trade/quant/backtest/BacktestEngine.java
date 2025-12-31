@@ -31,7 +31,7 @@ public class BacktestEngine {
     private final Strategy strategy;
 
     private BigDecimal balance;
-    private final List<Trade> trades;
+    private final List<ClosedTrade> closedTrades;  // 已平仓交易记录（包含完整盈亏信息）
     private final List<Position> positions;
     private final List<BigDecimal> equityCurve;
 
@@ -40,7 +40,7 @@ public class BacktestEngine {
         this.exchange = exchange;
         this.strategy = strategy;
         this.balance = config.getInitialCapital();
-        this.trades = new ArrayList<>();
+        this.closedTrades = new ArrayList<>();
         this.positions = new ArrayList<>();
         this.equityCurve = new ArrayList<>();
         this.equityCurve.add(balance);
@@ -211,23 +211,27 @@ public class BacktestEngine {
      */
     private void closePosition(Position pos, BigDecimal price, Instant time) {
         BigDecimal pnl = calculatePnL(pos, price);
+        BigDecimal fee = calculateFee(price, pos.getQuantity());
 
-        // 记录交易
-        Trade trade = new Trade(
-                UUID.randomUUID().toString(),
+        // 创建已平仓交易记录
+        ClosedTrade closedTrade = new ClosedTrade(
                 UUID.randomUUID().toString(),
                 pos.getSymbol(),
-                pos.getSide() == PositionSide.LONG ? Side.SELL : Side.BUY,
+                pos.getSide(),
+                pos.getEntryPrice(),
                 price,
                 pos.getQuantity(),
-                calculateFee(price, pos.getQuantity()),
+                pnl,
+                fee,
+                pos.getOpenTime(),
+                time,
                 strategy.getStrategyId()
         );
 
-        trades.add(trade);
-        balance = balance.add(pnl).subtract(trade.getFee());
+        closedTrades.add(closedTrade);
+        balance = balance.add(pnl).subtract(fee);
 
-        logger.debug("平仓: {} 价格:{} 盈亏:{}", pos.getSymbol(), price, pnl);
+        logger.debug("平仓: {} 价格:{} 盈亏:{} 手续费:{}", pos.getSymbol(), price, pnl, fee);
     }
 
     /**
@@ -312,22 +316,35 @@ public class BacktestEngine {
 
         // 计算年化收益率
         long days = ChronoUnit.DAYS.between(config.getStartTime(), config.getEndTime());
-        BigDecimal annualizedReturn = totalReturn.divide(BigDecimal.valueOf(days), 4, RoundingMode.HALF_UP)
-                .multiply(BigDecimal.valueOf(365));
+        BigDecimal annualizedReturn = days > 0 ? totalReturn.divide(BigDecimal.valueOf(days), 4, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(365)) : BigDecimal.ZERO;
 
         // 计算夏普比率（简化版，无风险利率设为0）
         BigDecimal sharpeRatio = calculateSharpeRatio();
 
-        // 统计交易
-        List<BigDecimal> pnlList = trades.stream()
-                .map(t -> calculatePnLFromTrade(t))
+        // 使用 closedTrades 进行统计（包含真实的盈亏数据）
+        if (closedTrades.isEmpty()) {
+            return new BacktestResult(
+                    totalReturn, annualizedReturn, maxDrawdown, sharpeRatio,
+                    0, 0, 0, BigDecimal.ZERO, BigDecimal.ZERO,
+                    BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, equityCurve
+            );
+        }
+
+        // 统计盈亏交易
+        List<BigDecimal> pnlList = closedTrades.stream()
+                .map(ClosedTrade::getNetPnl)
                 .toList();
 
         int winningTrades = (int) pnlList.stream().filter(p -> p.compareTo(BigDecimal.ZERO) > 0).count();
         int losingTrades = (int) pnlList.stream().filter(p -> p.compareTo(BigDecimal.ZERO) < 0).count();
-        BigDecimal winRate = BigDecimal.valueOf(winningTrades)
-                .divide(BigDecimal.valueOf(trades.size()), 4, RoundingMode.HALF_UP)
-                .multiply(BigDecimal.valueOf(100));
+        
+        BigDecimal winRate = BigDecimal.ZERO;
+        if (!closedTrades.isEmpty()) {
+            winRate = BigDecimal.valueOf(winningTrades)
+                    .divide(BigDecimal.valueOf(closedTrades.size()), 4, RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.valueOf(100));
+        }
 
         BigDecimal totalWin = pnlList.stream().filter(p -> p.compareTo(BigDecimal.ZERO) > 0)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -344,7 +361,7 @@ public class BacktestEngine {
 
         return new BacktestResult(
                 totalReturn, annualizedReturn, maxDrawdown, sharpeRatio,
-                trades.size(), winningTrades, losingTrades, winRate, profitFactor,
+                closedTrades.size(), winningTrades, losingTrades, winRate, profitFactor,
                 avgWin, avgLoss, largestWin, largestLoss, equityCurve
         );
     }
@@ -406,10 +423,5 @@ public class BacktestEngine {
     private BigDecimal sqrt(BigDecimal value) {
         // 简化的平方根计算
         return BigDecimal.valueOf(Math.sqrt(value.doubleValue()));
-    }
-
-    private BigDecimal calculatePnLFromTrade(Trade trade) {
-        // 简化计算，实际需要入场价格
-        return BigDecimal.ZERO;
     }
 }
