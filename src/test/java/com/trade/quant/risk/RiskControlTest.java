@@ -108,10 +108,12 @@ class RiskControlTest {
 
     @Test
     void testPositionSizeCalculation() {
-        // 账户 10000 USDT，风险 1% = 100 USDT
-        // 入场 1000，止损 980，每单位风险 = 20
-        // 仓位 = 100 / 20 = 5 张
-        // 但最大仓位限制 10% = 1000 USDT / 1000 = 1 张
+        // 测试风控模块的仓位计算
+        // 账户 10000 USDT，风险 1% = 100 USDT（每笔交易最大风险金额）
+        // 入场 1000，止损 980，每单位风险 = 20 USDT
+        // 基于风险的仓位 = 100 / 20 = 5 张
+        // 最大仓位限制 = 10% * 10000 = 1000 USDT 价值
+        // 实际仓位由风控模块综合计算
 
         Signal signal = new Signal(
                 "TestStrategy",

@@ -314,10 +314,17 @@ public class BacktestEngine {
         // 计算最大回撤
         BigDecimal maxDrawdown = calculateMaxDrawdown();
 
-        // 计算年化收益率
+        // 计算年化收益率（复合年化收益率 CAGR）
+        // CAGR = (final_value / initial_value)^(365/days) - 1
         long days = ChronoUnit.DAYS.between(config.getStartTime(), config.getEndTime());
-        BigDecimal annualizedReturn = days > 0 ? totalReturn.divide(BigDecimal.valueOf(days), 4, RoundingMode.HALF_UP)
-                .multiply(BigDecimal.valueOf(365)) : BigDecimal.ZERO;
+        BigDecimal annualizedReturn = BigDecimal.ZERO;
+        if (days > 0 && finalBalance.compareTo(BigDecimal.ZERO) > 0 
+                && config.getInitialCapital().compareTo(BigDecimal.ZERO) > 0) {
+            double ratio = finalBalance.doubleValue() / config.getInitialCapital().doubleValue();
+            double yearsExponent = 365.0 / days;
+            double cagr = Math.pow(ratio, yearsExponent) - 1;
+            annualizedReturn = BigDecimal.valueOf(cagr * 100).setScale(4, RoundingMode.HALF_UP);
+        }
 
         // 计算夏普比率（简化版，无风险利率设为0）
         BigDecimal sharpeRatio = calculateSharpeRatio();

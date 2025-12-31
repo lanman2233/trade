@@ -79,7 +79,9 @@ class DecimalTest {
         BigDecimal divisor = BigDecimal.ZERO;
         BigDecimal result = Decimal.divide(dividend, divisor);
         
-        // 除零应该返回0，不是抛出异常
+        // 安全除法：除零返回0而非抛出异常
+        // 这是为了金融计算中避免因意外数据导致系统崩溃
+        // 调用方应该在使用前检查输入数据的有效性
         assertEquals(0, BigDecimal.ZERO.compareTo(result));
     }
 
