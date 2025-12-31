@@ -5,7 +5,9 @@ import com.trade.quant.exchange.Exchange;
 import com.trade.quant.exchange.ExchangeException;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CopyOnWriteArraySet;
 
 /**
  * 行情数据管理器
@@ -13,6 +15,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * 1. 维护K线数据缓存
  * 2. 补齐历史数据
  * 3. 提供数据查询接口
+ * 
+ * 线程安全：所有缓存使用线程安全的集合类
  */
 public class MarketDataManager {
 
@@ -25,9 +29,10 @@ public class MarketDataManager {
 
     public MarketDataManager(Exchange exchange) {
         this.exchange = exchange;
-        this.kLineCache = new HashMap<>();
-        this.tickerCache = new HashMap<>();
-        this.listeners = new HashMap<>();
+        // 使用 ConcurrentHashMap 确保线程安全
+        this.kLineCache = new ConcurrentHashMap<>();
+        this.tickerCache = new ConcurrentHashMap<>();
+        this.listeners = new ConcurrentHashMap<>();
     }
 
     /**
@@ -60,9 +65,9 @@ public class MarketDataManager {
             endTime = batch.get(0).getOpenTime().toEpochMilli() - 1;
         }
 
-        // 缓存数据
+        // 缓存数据（使用线程安全的 ConcurrentHashMap）
         kLineCache
-                .computeIfAbsent(symbol, k -> new HashMap<>())
+                .computeIfAbsent(symbol, k -> new ConcurrentHashMap<>())
                 .put(interval, new CopyOnWriteArrayList<>(kLines));
     }
 
@@ -70,7 +75,7 @@ public class MarketDataManager {
      * 订阅实时K线
      */
     public void subscribeKLine(Symbol symbol, Interval interval, MarketDataListener listener) {
-        listeners.computeIfAbsent(symbol, k -> new HashSet<>()).add(listener);
+        listeners.computeIfAbsent(symbol, k -> new CopyOnWriteArraySet<>()).add(listener);
 
         exchange.subscribeKLine(symbol, interval, new MarketDataListener() {
             @Override
@@ -106,7 +111,7 @@ public class MarketDataManager {
      * 订阅Ticker
      */
     public void subscribeTicker(Symbol symbol, MarketDataListener listener) {
-        listeners.computeIfAbsent(symbol, k -> new HashSet<>()).add(listener);
+        listeners.computeIfAbsent(symbol, k -> new CopyOnWriteArraySet<>()).add(listener);
 
         exchange.subscribeTicker(symbol, new MarketDataListener() {
             @Override
@@ -199,7 +204,7 @@ public class MarketDataManager {
      */
     private void addOrUpdateKLine(KLine kLine) {
         Map<Interval, List<KLine>> symbolCache = kLineCache
-                .computeIfAbsent(kLine.getSymbol(), k -> new HashMap<>());
+                .computeIfAbsent(kLine.getSymbol(), k -> new ConcurrentHashMap<>());
 
         List<KLine> kLines = symbolCache.computeIfAbsent(kLine.getInterval(), k -> new CopyOnWriteArrayList<>());
 
