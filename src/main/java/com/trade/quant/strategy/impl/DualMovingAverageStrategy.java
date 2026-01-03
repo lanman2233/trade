@@ -52,8 +52,12 @@ public class DualMovingAverageStrategy extends AbstractStrategy {
         List<BigDecimal> fastValues = fastSMA.calculate(closes);
         List<BigDecimal> slowValues = slowSMA.calculate(closes);
 
-        // 获取最新的两个值
-        int size = fastValues.size();
+        // 确保两个列表都有足够的值（取较小的长度）
+        int size = Math.min(fastValues.size(), slowValues.size());
+        if (size < 2) {
+            return null;  // 至少需要2个值才能比较交叉
+        }
+
         BigDecimal fastNow = fastValues.get(size - 1);
         BigDecimal fastPrev = fastValues.get(size - 2);
         BigDecimal slowNow = slowValues.get(size - 1);
@@ -64,6 +68,8 @@ public class DualMovingAverageStrategy extends AbstractStrategy {
             // 需要成交量确认
             if (config.isRequireVolumeConfirmation() &&
                     !isVolumeHigh(kLines, 20, config.getMinVolumeRatio())) {
+                System.out.println(String.format("[%s] 金叉信号被成交量过滤: 快线=%.2f, 慢线=%.2f",
+                        kLines.get(kLines.size()-1).getOpenTime(), fastNow, slowNow));
                 return null;
             }
 
@@ -71,6 +77,8 @@ public class DualMovingAverageStrategy extends AbstractStrategy {
             BigDecimal quantity = calculatePositionSize(kLines);
 
             recordTrade();
+            System.out.println(String.format("[%s] ✅ 金叉入场: 快线%.2f > 慢线%.2f",
+                    kLines.get(kLines.size()-1).getOpenTime(), fastNow, slowNow));
             return createLongSignal(kLines, quantity,
                     String.format("金叉入场: 快线%.2f > 慢线%.2f", fastNow, slowNow));
         }
@@ -79,12 +87,16 @@ public class DualMovingAverageStrategy extends AbstractStrategy {
         if (fastPrev.compareTo(slowPrev) >= 0 && fastNow.compareTo(slowNow) < 0) {
             if (config.isRequireVolumeConfirmation() &&
                     !isVolumeHigh(kLines, 20, config.getMinVolumeRatio())) {
+                System.out.println(String.format("[%s] 死叉信号被成交量过滤: 快线=%.2f, 慢线=%.2f",
+                        kLines.get(kLines.size()-1).getOpenTime(), fastNow, slowNow));
                 return null;
             }
 
             BigDecimal quantity = calculatePositionSize(kLines);
 
             recordTrade();
+            System.out.println(String.format("[%s] ✅ 死叉入场: 快线%.2f < 慢线%.2f",
+                    kLines.get(kLines.size()-1).getOpenTime(), fastNow, slowNow));
             return createShortSignal(kLines, quantity,
                     String.format("死叉入场: 快线%.2f < 慢线%.2f", fastNow, slowNow));
         }

@@ -75,6 +75,14 @@ public class TradingSystemMain {
                 null
             );
 
+            // 🆕 设置代理（从配置文件读取）
+            if (configManager.isProxyEnabled()) {
+                String proxyHost = configManager.getProxyHost();
+                int proxyPort = configManager.getProxyPort();
+                System.out.println("使用代理: " + proxyHost + ":" + proxyPort);
+                exchange.setProxy(proxyHost, proxyPort);
+            }
+
             // 创建策略（从配置文件加载参数）
             StrategyConfig strategyConfig = StrategyConfig.builder()
                     .riskPerTrade(new BigDecimal(configManager.getProperty("risk.per.trade")))

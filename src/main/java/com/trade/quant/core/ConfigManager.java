@@ -118,6 +118,17 @@ public class ConfigManager {
     }
 
     /**
+     * 获取配置属性（带默认值）
+     */
+    public String getProperty(String key, String defaultValue) {
+        String value = properties.getProperty(key);
+        if (value == null || value.trim().isEmpty()) {
+            return defaultValue;
+        }
+        return value.trim();
+    }
+
+    /**
      * 检查属性是否存在
      */
     public boolean hasProperty(String key) {
@@ -145,6 +156,58 @@ public class ConfigManager {
         } catch (Exception e) {
             return defaultValue;
         }
+    }
+
+    /**
+     * 获取 BigDecimal 配置
+     * 用于金融计算，保证精度
+     *
+     * @param key 配置键
+     * @param defaultValue 默认值（解析失败时返回）
+     * @return BigDecimal 值
+     */
+    public java.math.BigDecimal getBigDecimalProperty(String key, java.math.BigDecimal defaultValue) {
+        try {
+            String value = getProperty(key);
+            return new java.math.BigDecimal(value);
+        } catch (Exception e) {
+            return defaultValue;
+        }
+    }
+
+    /**
+     * 检查功能是否启用
+     * 用于特性开关（feature flag）
+     *
+     * @param featurePrefix 功能前缀，如 "monitor.ev"
+     * @return true 如果功能已启用，false 否则
+     */
+    public boolean isFeatureEnabled(String featurePrefix) {
+        String key = featurePrefix + ".enabled";
+        return getBooleanProperty(key, false);
+    }
+
+    /**
+     * 获取代理主机
+     */
+    public String getProxyHost() {
+        return getProperty("proxy.host", "");
+    }
+
+    /**
+     * 获取代理端口
+     */
+    public int getProxyPort() {
+        return getIntProperty("proxy.port", 0);
+    }
+
+    /**
+     * 检查是否启用代理
+     */
+    public boolean isProxyEnabled() {
+        String host = getProxyHost();
+        int port = getProxyPort();
+        return !host.isEmpty() && port > 0;
     }
 
     /**

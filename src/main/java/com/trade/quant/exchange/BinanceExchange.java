@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.*;
@@ -25,7 +27,7 @@ public class BinanceExchange implements Exchange {
 
     private String apiKey;
     private String secretKey;
-    private final OkHttpClient httpClient;
+    private OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final Map<String, WebSocket> webSockets;
     private boolean connected = false;
@@ -54,7 +56,13 @@ public class BinanceExchange implements Exchange {
 
     @Override
     public void setProxy(String host, int port) {
-        // TODO: 实现代理设置
+        Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(host, port));
+        this.httpClient = new OkHttpClient.Builder()
+                .proxy(proxy)
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS)
+                .build();
     }
 
     @Override

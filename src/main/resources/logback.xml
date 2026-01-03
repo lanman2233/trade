@@ -31,9 +31,27 @@
         </encoder>
     </appender>
 
+    <!-- 策略健康日志单独文件 -->
+    <appender name="HEALTH_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/strategy-health.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>logs/strategy-health.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>90</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
     <!-- 交易日志专用logger -->
     <logger name="TRADE_LOGGER" level="INFO" additivity="false">
         <appender-ref ref="TRADE_FILE"/>
+    </logger>
+
+    <!-- 健康检查专用logger -->
+    <logger name="HEALTH_LOGGER" level="INFO" additivity="false">
+        <appender-ref ref="HEALTH_FILE"/>
+        <appender-ref ref="CONSOLE"/>
     </logger>
 
     <!-- Root Logger -->

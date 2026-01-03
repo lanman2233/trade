@@ -12,7 +12,7 @@ public class StrategyConfig {
     private boolean useATRStopLoss = true;                        // 使用ATR止损
     private BigDecimal atrStopLossMultiplier = BigDecimal.valueOf(2); // ATR止损倍数
     private int cooldownBars = 3;                                 // 冷却K线数
-    private boolean requireVolumeConfirmation = true;             // 需要成交量确认
+    private boolean requireVolumeConfirmation = false;             // 需要成交量确认
     private BigDecimal minVolumeRatio = BigDecimal.valueOf(1.2);  // 最小成交量倍数
 
     public BigDecimal getRiskPerTrade() {

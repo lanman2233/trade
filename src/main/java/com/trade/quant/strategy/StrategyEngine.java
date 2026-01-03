@@ -3,6 +3,7 @@ package com.trade.quant.strategy;
 import com.trade.quant.core.*;
 import com.trade.quant.market.MarketDataManager;
 import com.trade.quant.market.MarketDataListener;
+import com.trade.quant.monitor.StrategyHealthChecker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,6 +18,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * 2. 统一处理市场数据
  * 3. 产出交易信号
  * 4. 分发信号给风控模块
+ * 5. 检查策略健康状态（集成 StrategyHealthChecker）
  *
  * 架构：StrategyEngine 只产出「交易意图」，不执行交易
  */
@@ -29,6 +31,7 @@ public class StrategyEngine {
     private final List<SignalListener> signalListeners;
     private final Map<String, Position> openPositions;
     private boolean running;
+    private StrategyHealthChecker healthChecker;
 
     public StrategyEngine(MarketDataManager marketDataManager) {
         this.strategies = new CopyOnWriteArrayList<>();
@@ -44,6 +47,12 @@ public class StrategyEngine {
     public void addStrategy(Strategy strategy) {
         strategy.initialize();
         strategies.add(strategy);
+
+        // 注册到健康检查器（如果已配置）
+        if (healthChecker != null) {
+            healthChecker.registerStrategy(strategy);
+        }
+
         logger.info("策略已添加: {} ({})", strategy.getName(), strategy.getStrategyId());
     }
 
@@ -128,9 +137,26 @@ public class StrategyEngine {
     }
 
     /**
+     * 设置健康检查器
+     * 用于策略生命周期管理
+     *
+     * @param healthChecker 健康检查器（可选）
+     */
+    public void setHealthChecker(StrategyHealthChecker healthChecker) {
+        this.healthChecker = healthChecker;
+        logger.info("健康检查器已{}", healthChecker != null ? "设置" : "清除");
+    }
+
+    /**
      * 处理单个策略
      */
     private void processStrategy(Strategy strategy, KLine kLine) {
+        // 检查健康状态（如果已配置健康检查器）
+        if (healthChecker != null && !healthChecker.isStrategyEnabled(strategy.getStrategyId())) {
+            logger.debug("策略 {} 已禁用，跳过处理", strategy.getStrategyId());
+            return;
+        }
+
         // 检查冷却期
         if (strategy.isInCooldown()) {
             logger.debug("策略 {} 处于冷却期，跳过", strategy.getStrategyId());
