@@ -43,11 +43,25 @@ public interface Strategy {
     Signal analyze(List<KLine> kLines);
 
     /**
-     * 更新持仓状态（用于出场决策）
+     * 更新持仓状态（用于出场决策）- 接收完整历史数据
+     * @param position 当前持仓
+     * @param currentKLine 最新K线
+     * @param allKLines 完整的K线历史数据（按时间正序）
+     * @return 出场信号，无信号返回null
+     */
+    default Signal onPositionUpdate(Position position, KLine currentKLine, List<KLine> allKLines) {
+        // 向后兼容：调用旧方法
+        return onPositionUpdate(position, currentKLine);
+    }
+
+    /**
+     * 更新持仓状态（用于出场决策）- 仅接收当前K线
      * @param position 当前持仓
      * @param currentKLine 最新K线
      * @return 出场信号，无信号返回null
+     * @deprecated 建议使用 {@link #onPositionUpdate(Position, KLine, List)} 以获取完整历史数据
      */
+    @Deprecated
     default Signal onPositionUpdate(Position position, KLine currentKLine) {
         return null;
     }

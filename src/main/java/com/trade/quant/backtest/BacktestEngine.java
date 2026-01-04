@@ -76,6 +76,10 @@ public class BacktestEngine {
             // 检查持仓止损
             checkStopLoss(kLine);
 
+            // 调用策略的持仓更新方法（让策略有机会生成出场信号）
+            // 传入完整历史K线数据，支持策略实时计算指标
+            checkPositionUpdates(kLine, availableKLines);
+
             // 调用策略生成信号
             Signal signal = strategy.analyze(availableKLines);
 
@@ -139,6 +143,27 @@ public class BacktestEngine {
                 BigDecimal exitPrice = pos.getStopLoss();
                 closePosition(pos, exitPrice, kLine.getCloseTime());
                 it.remove();
+            }
+        }
+    }
+
+    /**
+     * 检查策略的持仓更新（支持动态出场信号）
+     * @param kLine 当前K线
+     * @param allKLines 完整的K线历史数据
+     */
+    private void checkPositionUpdates(KLine kLine, List<KLine> allKLines) {
+        Iterator<Position> it = positions.iterator();
+        while (it.hasNext()) {
+            Position pos = it.next();
+            // 传入完整历史K线数据，支持策略实时计算指标
+            Signal exitSignal = strategy.onPositionUpdate(pos, kLine, allKLines);
+            if (exitSignal != null && exitSignal.isExit()) {
+                // 策略要求出场
+                BigDecimal exitPrice = applySlippage(kLine.getClose(), exitSignal.getSide());
+                closePosition(pos, exitPrice, kLine.getCloseTime());
+                it.remove();  // 安全删除当前持仓
+                break; // 一次只处理一个出场信号
             }
         }
     }

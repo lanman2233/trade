@@ -9,6 +9,7 @@ import com.trade.quant.risk.RiskConfig;
 import com.trade.quant.risk.RiskControl;
 import com.trade.quant.risk.StopLossManager;
 import com.trade.quant.strategy.impl.DualMovingAverageStrategy;
+import com.trade.quant.strategy.impl.HFVSStrategy;
 import com.trade.quant.strategy.StrategyConfig;
 import com.trade.quant.strategy.StrategyEngine;
 
@@ -88,11 +89,24 @@ public class TradingSystemMain {
                     .riskPerTrade(new BigDecimal(configManager.getProperty("risk.per.trade")))
                     .cooldownBars(configManager.getIntProperty("strategy.cooldown.bars", 3))
                     .useATRStopLoss(configManager.getBooleanProperty("strategy.use.atr.stoploss", true))
+                    .atrStopLossMultiplier(new BigDecimal("0.8"))
                     .build();
 
-            DualMovingAverageStrategy strategy = new DualMovingAverageStrategy(
-                    symbol, interval, 10, 30, strategyConfig
+            // ==================== 策略选择 ====================
+            // 使用 HFVS 策略（高频波动回归）
+            HFVSStrategy strategy = new HFVSStrategy(
+                    symbol, interval, strategyConfig
             );
+
+            // 如果想使用双均线策略，可以替换为：
+            // DualMovingAverageStrategy strategy = new DualMovingAverageStrategy(
+            //         symbol, interval, 10, 30, strategyConfig
+            // );
+
+            System.out.println("使用策略: " + strategy.getName());
+            System.out.println("交易对: " + symbol.toPairString());
+            System.out.println("周期: " + interval.getCode());
+            System.out.println();
 
             // 运行回测
             BacktestEngine engine = new BacktestEngine(config, exchange, strategy);
