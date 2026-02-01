@@ -8,15 +8,20 @@ import com.trade.quant.market.MarketDataManager;
 import com.trade.quant.risk.RiskConfig;
 import com.trade.quant.risk.RiskControl;
 import com.trade.quant.risk.StopLossManager;
+import com.trade.quant.strategy.impl.BtcMa200Rsi6TrendStrategy;
 import com.trade.quant.strategy.impl.DualMovingAverageStrategy;
 import com.trade.quant.strategy.impl.HFVSStrategy;
 import com.trade.quant.strategy.StrategyConfig;
 import com.trade.quant.strategy.StrategyEngine;
 
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
 
 /**
  * 量化交易系统主类
@@ -54,7 +59,7 @@ public class TradingSystemMain {
 
             // 配置回测参数
             Symbol symbol = Symbol.of("BTC-USDT");
-            Interval interval = Interval.FIVE_MINUTES;
+            Interval interval = Interval.FIFTEEN_MINUTES;
 
             BacktestConfig config = BacktestConfig.builder()
                     .symbol(symbol)
@@ -94,7 +99,7 @@ public class TradingSystemMain {
 
             // ==================== 策略选择 ====================
             // 使用 HFVS 策略（高频波动回归）
-            HFVSStrategy strategy = new HFVSStrategy(
+            BtcMa200Rsi6TrendStrategy strategy = new BtcMa200Rsi6TrendStrategy(
                     symbol, interval, strategyConfig
             );
 
@@ -109,7 +114,14 @@ public class TradingSystemMain {
             System.out.println();
 
             // 运行回测
-            BacktestEngine engine = new BacktestEngine(config, exchange, strategy);
+            BacktestTradeLogger tradeLogger = new BacktestTradeLogger("logs/backtest-trades.csv");
+            BacktestEngine engine = new BacktestEngine(
+                    config,
+                    exchange,
+                    strategy,
+                    tradeLogger,
+                    loadLocalKLinesIfPresent(configManager, symbol, interval)
+            );
             BacktestResult result = engine.run();
 
             // 输出结果
@@ -215,6 +227,28 @@ public class TradingSystemMain {
     /**
      * 打印使用说明
      */
+    private static List<KLine> loadLocalKLinesIfPresent(ConfigManager configManager,
+                                                        Symbol symbol,
+                                                        Interval interval) {
+        String dataFile = configManager.getProperty("backtest.data.file", "").trim();
+        if (dataFile.isEmpty()) {
+            return null;
+        }
+        Path path = Paths.get(dataFile);
+        if (!Files.exists(path)) {
+            System.out.println("本地数据文件不存在: " + path);
+            return null;
+        }
+
+        try {
+            System.out.println("使用本地数据文件: " + path.toAbsolutePath());
+            return CsvKLineLoader.load(path, symbol, interval);
+        } catch (Exception e) {
+            System.err.println("加载本地K线失败: " + e.getMessage());
+            return null;
+        }
+    }
+
     private static void printUsage() {
         System.out.println("使用方法:");
         System.out.println("  java -jar quant-trading.jar backtest  运行回测");

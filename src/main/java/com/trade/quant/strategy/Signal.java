@@ -19,11 +19,28 @@ public class Signal {
     private final BigDecimal stopLoss;
     private final BigDecimal takeProfit;
     private final String reason;
+    private final TradeMetrics metrics;
+    private final ExitReason exitReason;
+    private final boolean maker;
     private final long timestamp;
 
     public Signal(String strategyId, Symbol symbol, SignalType type, Side side,
                  BigDecimal price, BigDecimal quantity, BigDecimal stopLoss,
                  BigDecimal takeProfit, String reason) {
+        this(strategyId, symbol, type, side, price, quantity, stopLoss, takeProfit, reason, null, null);
+    }
+
+    public Signal(String strategyId, Symbol symbol, SignalType type, Side side,
+                 BigDecimal price, BigDecimal quantity, BigDecimal stopLoss,
+                 BigDecimal takeProfit, String reason,
+                 TradeMetrics metrics, ExitReason exitReason) {
+        this(strategyId, symbol, type, side, price, quantity, stopLoss, takeProfit, reason, metrics, exitReason, false);
+    }
+
+    public Signal(String strategyId, Symbol symbol, SignalType type, Side side,
+                 BigDecimal price, BigDecimal quantity, BigDecimal stopLoss,
+                 BigDecimal takeProfit, String reason,
+                 TradeMetrics metrics, ExitReason exitReason, boolean maker) {
         this.strategyId = strategyId;
         this.symbol = symbol;
         this.type = type;
@@ -33,6 +50,9 @@ public class Signal {
         this.stopLoss = stopLoss;
         this.takeProfit = takeProfit;
         this.reason = reason;
+        this.metrics = metrics;
+        this.exitReason = exitReason;
+        this.maker = maker;
         this.timestamp = System.currentTimeMillis();
     }
 
@@ -45,6 +65,9 @@ public class Signal {
     public BigDecimal getStopLoss() { return stopLoss; }
     public BigDecimal getTakeProfit() { return takeProfit; }
     public String getReason() { return reason; }
+    public TradeMetrics getMetrics() { return metrics; }
+    public ExitReason getExitReason() { return exitReason; }
+    public boolean isMaker() { return maker; }
     public long getTimestamp() { return timestamp; }
 
     /**

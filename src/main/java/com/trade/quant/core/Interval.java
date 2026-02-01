@@ -6,7 +6,9 @@ package com.trade.quant.core;
  */
 public enum Interval {
     ONE_MINUTE("1m", 1),
-    FIVE_MINUTES("5m", 5);
+    FIVE_MINUTES("5m", 5),
+    FIFTEEN_MINUTES("15m", 15),
+    ONE_HOUR("1h", 60);
 
     private final String code;
     private final int minutes;

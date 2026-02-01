@@ -3,33 +3,43 @@ package com.trade.quant.backtest;
 import java.math.BigDecimal;
 import java.util.List;
 
-/**
- * 回测结果
- */
 public class BacktestResult {
 
-    private final BigDecimal totalReturn;        // 总收益率
-    private final BigDecimal annualizedReturn;   // 年化收益率
-    private final BigDecimal maxDrawdown;        // 最大回撤
-    private final BigDecimal sharpeRatio;        // 夏普比率
-    private final int totalTrades;               // 总交易次数
-    private final int winningTrades;             // 盈利次数
-    private final int losingTrades;              // 亏损次数
-    private final BigDecimal winRate;            // 胜率
-    private final BigDecimal profitFactor;       // 盈亏比
-    private final BigDecimal avgWin;             // 平均盈利
-    private final BigDecimal avgLoss;            // 平均亏损
-    private final BigDecimal largestWin;         // 最大盈利
-    private final BigDecimal largestLoss;        // 最大亏损
-    private final List<BigDecimal> equityCurve;  // 资金曲线
+    private final BigDecimal totalReturn;
+    private final BigDecimal annualizedReturn;
+    private final BigDecimal maxDrawdown;
+    private final BigDecimal sharpeRatio;
+    private final int totalTrades;
+    private final int winningTrades;
+    private final int losingTrades;
+    private final BigDecimal winRate;
+    private final BigDecimal profitFactor;
+    private final BigDecimal avgWin;
+    private final BigDecimal avgLoss;
+    private final BigDecimal largestWin;
+    private final BigDecimal largestLoss;
+    private final BigDecimal expectancy;
+    private final BigDecimal feeImpact;
+    private final BigDecimal feeImpactPercent;
+    private final List<BigDecimal> equityCurve;
 
-    public BacktestResult(BigDecimal totalReturn, BigDecimal annualizedReturn,
-                        BigDecimal maxDrawdown, BigDecimal sharpeRatio,
-                        int totalTrades, int winningTrades, int losingTrades,
-                        BigDecimal winRate, BigDecimal profitFactor,
-                        BigDecimal avgWin, BigDecimal avgLoss,
-                        BigDecimal largestWin, BigDecimal largestLoss,
-                        List<BigDecimal> equityCurve) {
+    public BacktestResult(BigDecimal totalReturn,
+                          BigDecimal annualizedReturn,
+                          BigDecimal maxDrawdown,
+                          BigDecimal sharpeRatio,
+                          int totalTrades,
+                          int winningTrades,
+                          int losingTrades,
+                          BigDecimal winRate,
+                          BigDecimal profitFactor,
+                          BigDecimal avgWin,
+                          BigDecimal avgLoss,
+                          BigDecimal largestWin,
+                          BigDecimal largestLoss,
+                          BigDecimal expectancy,
+                          BigDecimal feeImpact,
+                          BigDecimal feeImpactPercent,
+                          List<BigDecimal> equityCurve) {
         this.totalReturn = totalReturn;
         this.annualizedReturn = annualizedReturn;
         this.maxDrawdown = maxDrawdown;
@@ -43,6 +53,9 @@ public class BacktestResult {
         this.avgLoss = avgLoss;
         this.largestWin = largestWin;
         this.largestLoss = largestLoss;
+        this.expectancy = expectancy;
+        this.feeImpact = feeImpact;
+        this.feeImpactPercent = feeImpactPercent;
         this.equityCurve = equityCurve;
     }
 
@@ -59,6 +72,9 @@ public class BacktestResult {
     public BigDecimal getAvgLoss() { return avgLoss; }
     public BigDecimal getLargestWin() { return largestWin; }
     public BigDecimal getLargestLoss() { return largestLoss; }
+    public BigDecimal getExpectancy() { return expectancy; }
+    public BigDecimal getFeeImpact() { return feeImpact; }
+    public BigDecimal getFeeImpactPercent() { return feeImpactPercent; }
     public List<BigDecimal> getEquityCurve() { return equityCurve; }
 
     @Override
@@ -66,28 +82,34 @@ public class BacktestResult {
         return String.format(
                 """
                 ==================== 回测结果 ====================
-                总收益率:        %.2f%%
-                年化收益率:      %.2f%%
-                最大回撤:        %.2f%%
-                夏普比率:        %.2f
+                总收益率:           %.2f%%
+                年化收益率:         %.2f%%
+                最大回撤:           %.2f%%
+                夏普比率:           %.2f
 
                 交易统计:
-                  总交易次数:    %d
-                  盈利次数:      %d
-                  亏损次数:      %d
-                  胜率:          %.2f%%
-                  盈亏比:        %.2f
+                  总交易数:         %d
+                  盈利交易数:       %d
+                  亏损交易数:       %d
+                  胜率:             %.2f%%
+                  盈亏比:           %.2f
 
-                盈亏分析:
-                  平均盈利:      %.2f USDT
-                  平均亏损:      %.2f USDT
-                  最大盈利:      %.2f USDT
-                  最大亏损:      %.2f USDT
-                ================================================
+                盈亏统计:
+                  平均盈利:         %.2f USDT
+                  平均亏损:         %.2f USDT
+                  单笔最大盈利:     %.2f USDT
+                  单笔最大亏损:     %.2f USDT
+                  期望值:           %.2f USDT
+
+                手续费:
+                  总手续费:         %.2f USDT
+                  手续费影响:       %.2f%%
+                =================================================
                 """,
                 totalReturn, annualizedReturn, maxDrawdown, sharpeRatio,
                 totalTrades, winningTrades, losingTrades, winRate, profitFactor,
-                avgWin, avgLoss, largestWin, largestLoss
+                avgWin, avgLoss, largestWin, largestLoss, expectancy,
+                feeImpact, feeImpactPercent
         );
     }
 }
