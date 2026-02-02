@@ -7,7 +7,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * 婊戝姩鍒嗕綅鏁拌窡韪櫒
+ * 移动分位数跟踪器
  */
 public class RollingPercentileTracker {
 
@@ -16,7 +16,7 @@ public class RollingPercentileTracker {
 
     public RollingPercentileTracker(int windowSize) {
         if (windowSize <= 0) {
-            throw new IllegalArgumentException("绐楀彛澶у皬蹇呴』澶т簬0");
+            throw new IllegalArgumentException("窗口大小必须大于0");
         }
         this.windowSize = windowSize;
         this.history = new ArrayList<>(windowSize);
@@ -24,7 +24,7 @@ public class RollingPercentileTracker {
 
     public void update(BigDecimal value) {
         if (value.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("鏁板€煎繀椤讳负姝ｆ暟");
+            throw new IllegalArgumentException("价格必须为正数");
         }
         history.add(value);
         if (history.size() > windowSize) {

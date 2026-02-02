@@ -8,27 +8,30 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * K绾挎暟鎹眹鎬诲伐鍏? */
+ * K线数据聚合器
+ */
 public final class KLineAggregator {
 
     private KLineAggregator() {
     }
 
     /**
-     * 灏嗕綆鍛ㄦ湡K绾挎眹鎬诲埌楂樺懆鏈?
+     * 将低时间周期K线聚合到高时间周期
      *
-     * @param source         源K绾挎暟鎹?     * @param sourceInterval 源K绾垮懆鏈?     * @param targetInterval 鐩爣K绾垮懆鏈?
-     * @return 姹囨€诲悗K绾挎暟鎹?
+     * @param source         源K线数据
+     * @param sourceInterval 源K线周期
+     * @param targetInterval 目标K线周期
+     * @return 聚合后K线数据
      */
     public static List<KLine> aggregate(List<KLine> source, Interval sourceInterval, Interval targetInterval) {
         if (source == null || source.isEmpty()) {
             return List.of();
         }
         if (sourceInterval.getMinutes() >= targetInterval.getMinutes()) {
-            throw new IllegalArgumentException("鐩爣鍛ㄦ湡蹇呴』澶т簬源鍛ㄦ湡");
+            throw new IllegalArgumentException("目标周期必须大于源周期");
         }
         if (targetInterval.getMinutes() % sourceInterval.getMinutes() != 0) {
-            throw new IllegalArgumentException("鐩爣鍛ㄦ湡蹇呴』鏄簮鍛ㄦ湡鐨勬暣鏁板€嶏細"
+            throw new IllegalArgumentException("目标周期必须是源周期的整数倍："
                     + sourceInterval.getMinutes() + " -> " + targetInterval.getMinutes());
         }
 
@@ -46,7 +49,7 @@ public final class KLineAggregator {
         for (Map.Entry<Long, List<KLine>> entry : buckets.entrySet()) {
             List<KLine> bucket = entry.getValue();
             if (bucket.size() < barsPerBucket) {
-                continue; // 鍙娇鐢ㄥ畬鏁磇绾?
+                continue; // 数据不足，跳过当前分组
             }
 
             KLine first = bucket.get(0);

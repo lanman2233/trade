@@ -10,7 +10,8 @@
       "Bash(timeout:*)",
       "Bash(dir:*)",
       "Bash(findstr:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(mvn compile:*)"
     ]
   }
 }

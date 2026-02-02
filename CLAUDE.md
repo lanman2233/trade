@@ -1,12 +1,23 @@
 # CLAUDE.md
 
-本文件为 Claude Code (claude.ai/code) 在此代码库中工作时提供指导。
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## 最近重大更新（2026-01-03）
+
+**策略持仓期间指标计算修复**：
+- **问题**：策略的 `onPositionUpdate()` 方法只能接收单根K线，无法在持仓期间重新计算需要历史数据的指标（RSI、ATR、EMA等）
+- **解决方案**：
+  1. `Strategy` 接口新增方法重载：`onPositionUpdate(Position, KLine, List<KLine>)` 接收完整历史数据
+  2. 旧方法标记为 `@Deprecated` 以保持向后兼容
+  3. `BacktestEngine` 自动传入完整K线历史到新方法
+- **影响**：新策略必须重写新方法签名才能在持仓期间正确计算指标；旧策略继续工作但无法动态更新指标
+- **示例参考**：`HFVSStrategy` 展示了正确的实现方式
 
 ## 项目概述
 
 这是一个生产级的量化交易系统，用于中心化交易所（Binance、OKX）的 USDT 本位合约。系统优先考虑盈利能力、风险控制和稳定性，而非预测准确性或复杂模型。
 
-**技术栈：** Java 17+, Maven, OkHttp 4.12 (REST/WebSocket), Jackson 2.16 (JSON), SLF4J + Logback (日志)
+**技术栈：** Java 17+, Maven, OkHttp 4.12 (REST/WebSocket), Jackson 2.16 (JSON), SLF4J + Logback (日志), JUnit 5 (测试)
 
 **核心约束：**
 - 仅支持 USDT 本位合约（不支持现货、币本位）
@@ -15,6 +26,11 @@
 - 强制要求：每笔交易必须设置止损（ATR 或固定）
 - 每笔交易最大风险：账户资金的 1-2%
 - 单策略最大回撤：<30%
+
+**监控能力：**
+- 滚动 EV 计算（最近 N 笔交易的期望值）
+- 策略健康检查和自动禁用
+- 性能偏差监控（实盘 vs 回测）
 
 ## 构建和运行命令
 
@@ -35,8 +51,12 @@ java -cp "target/classes;target/dependency/*" com.trade.quant.TradingSystemMain 
 # 运行测试
 mvn test
 
-# 运行单个测试类
-mvn test -Dtest=ClassName
+# 运行单个测试类（示例）
+mvn test -Dtest=DecimalTest
+mvn test -Dtest=SMATest
+mvn test -Dtest=RSITest
+mvn test -Dtest=RiskControlTest
+mvn test -Dtest=ClosedTradeTest
 
 # 清理并重新编译
 mvn clean compile
@@ -94,6 +114,11 @@ MarketData → StrategyEngine → RiskControl → OrderExecutor → Exchange
 │   └── TradingSystemMain.java  # 主入口
 ├── src/main/resources/
 │   └── logback.xml        # 日志配置
+├── src/test/java/com/trade/quant/
+│   ├── backtest/          # 回测模块测试
+│   ├── core/              # 核心工具类测试
+│   ├── indicator/         # 技术指标测试
+│   └── risk/              # 风控模块测试
 ├── config.template.properties  # 配置模板（提交到版本控制）
 ├── config.properties      # 实际配置（不提交，.gitignore）
 ├── logs/                  # 日志目录（.gitignore）
@@ -103,18 +128,6 @@ MarketData → StrategyEngine → RiskControl → OrderExecutor → Exchange
     ├── orders/            # 订单持久化（JSON格式，崩溃恢复）
     └── trades/            # 交易记录（CSV格式）
 ```
-
-**数据单向流动：**
-```
-MarketData → StrategyEngine → RiskControl → OrderExecutor → Exchange
-     ↓              ↓              ↓              ↓              ↓
-  行情模块        策略引擎        风控模块        执行模块        交易所
-```
-
-**核心设计原则：** 每层职责单一，不可绕过：
-- **StrategyEngine** 只生成交易意图（Signal），永不执行交易
-- **RiskControl** 对所有订单拥有最终否决权
-- **Exchange** 层只负责执行，不包含业务逻辑
 
 ## 如何添加新策略
 
@@ -153,12 +166,29 @@ public class MyNewStrategy extends AbstractStrategy {
     }
 
     @Override
-    public Signal onPositionUpdate(Position position, KLine currentKLine) {
-        // 持仓时的出场逻辑
+    public Signal onPositionUpdate(Position position, KLine currentKLine, List<KLine> allKLines) {
+        // ⚠️ 重要：使用新版本方法签名以获取完整历史数据
+        // 持仓期间每根K线都会调用此方法，需要实时计算指标做出场判断
+
+        // 重新计算指标（使用最新历史数据）
+        List<BigDecimal> closes = extractCloses(allKLines);
+        BigDecimal currentRSI = new RSI(14).latest(closes);
+
+        // 出场逻辑
+        if (shouldExit(currentRSI)) {
+            return createExitSignal(position.getSide(), position.getQuantity(), "出场原因");
+        }
+
         return null;
     }
 }
 ```
+
+**⚠️ 关键：持仓期间指标计算**
+- **必须重写新方法签名**：`onPositionUpdate(Position, KLine, List<KLine>)` 以接收完整历史数据
+- **不要使用旧方法**：`onPositionUpdate(Position, KLine)` 已标记为 @Deprecated
+- **每根K线重新计算指标**：持仓期间的指标必须实时计算，不能使用缓存值
+- **BacktestEngine 自动调用**：回测引擎会自动传入完整K线历史，策略无需手动管理
 
 2. **在 TradingSystemMain 中注册** 或动态创建策略：
 
@@ -175,6 +205,10 @@ MyNewStrategy strategy = new MyNewStrategy(
 strategyEngine.addStrategy(strategy);
 ```
 
+3. **策略实现示例**：
+   - **DualMovingAverageStrategy**：双均线策略（简单示例，仅使用入场信号）
+   - **HFVSStrategy**：高频波动回归策略（完整实现，包含持仓管理和动态出场）
+
 ## 关键实现细节
 
 ### 金融计算（强制性）
@@ -184,6 +218,26 @@ strategyEngine.addStrategy(strategy);
   - `Decimal.scaleQuantity(value)` - 数量格式化（3位小数）
   - `Decimal.divide(a, b)` - 安全除法
   - `Decimal.of(String)` / `Decimal.of(double)` - 创建 BigDecimal
+
+### 技术指标计算（关键）
+- **指标类无状态**：所有指标类（RSI、ATR、EMA、SMA等）都是无状态的，`latest()` 方法会重新计算整个历史序列
+- **性能考虑**：指标计算复杂度为 O(n)，每根K线调用两次（analyze + onPositionUpdate），总复杂度 O(n²)
+- **正确使用方式**：
+  ```java
+  // ❌ 错误：缓存指标值（会导致持仓期间使用过期数据）
+  private List<BigDecimal> rsiHistory = new ArrayList<>();
+  public void analyze(List<KLine> kLines) {
+      BigDecimal rsi = new RSI(14).latest(closes);
+      rsiHistory.add(rsi);  // 不要这样做
+  }
+
+  // ✅ 正确：每次需要时重新计算
+  public void onPositionUpdate(Position pos, KLine currentKLine, List<KLine> allKLines) {
+      List<BigDecimal> closes = extractCloses(allKLines);
+      BigDecimal currentRSI = new RSI(14).latest(closes);  // 实时计算
+  }
+  ```
+- **性能优化建议**：如果性能成为瓶颈，可考虑实现指标缓存机制（需注意缓存失效逻辑）
 
 ### 订单生命周期
 1. **Strategy** 生成 `Signal`（仅交易意图，不包含执行逻辑）
@@ -221,10 +275,31 @@ strategyEngine.addStrategy(strategy);
 - 输出指标：总收益率、年化收益率、最大回撤、夏普比率、胜率、盈亏比、资金曲线
 - **重要**：永远不要在用于验证的同一数据集上优化参数（避免过拟合）
 - 建议使用步进分析（walk-forward analysis）进行参数选择
+- **持仓期间指标更新**：`BacktestEngine.checkPositionUpdates()` 会在每根K线自动调用 `strategy.onPositionUpdate(position, currentKLine, allKLines)`，传入完整历史数据支持实时指标计算
+
+### 监控和健康检查
+- **EV 监控**（`monitor.ev.enabled=false`）：
+  - 滚动窗口计算 EV、胜率、平均盈亏
+  - 窗口大小可配置（默认 100 笔）
+  - 状态持久化到 `data/monitor/ev-state-{strategyId}.json`
+- **策略健康检查**（`monitor.health.enabled=false`）：
+  - 自动禁用条件：连续亏损超过阈值、EV 为负
+  - 支持手动重新启用策略
+  - 状态持久化到 `data/monitor/health-state.json`
+  - 健康日志：`logs/strategy-health.log`
+- **集成方式**：
+  ```java
+  // 在 StrategyEngine 中设置健康检查器
+  RollingEVCalculator evCalculator = new RollingEVCalculator(100);
+  HealthCheckConfig healthConfig = HealthCheckConfig.fromProperties();
+  StrategyHealthChecker healthChecker = new StrategyHealthChecker(evCalculator, healthConfig);
+  strategyEngine.setHealthChecker(healthChecker);
+  ```
 
 ### 日志系统
 - 主日志：`logs/trading.log`（30天滚动）
 - 交易日志：`logs/trades.log`（365天滚动，专门记录交易信号）
+- 策略健康日志：`logs/strategy-health.log`（90天滚动，记录策略状态变化）
 - 通过专用 logger 记录交易：`Logger tradeLogger = LoggerFactory.getLogger("TRADE_LOGGER")`
 
 ## 配置系统
@@ -255,6 +330,31 @@ backtest.maker.fee=0.0002
 backtest.taker.fee=0.0004
 backtest.slippage=0.0005
 backtest.leverage=1
+
+# EV 监控配置（默认禁用）
+monitor.ev.enabled=false
+monitor.ev.window=100
+monitor.ev.min=0.0
+
+# 策略健康检查配置（默认禁用）
+monitor.health.enabled=false
+monitor.health.auto.enable=true
+monitor.health.min.sample=30
+monitor.health.max.consecutive.losses=7
+monitor.health.min.ev.negative.trades=30
+
+# 性能偏差监控配置（默认禁用）
+monitor.deviation.enabled=false
+monitor.deviation.check.frequency=10
+monitor.deviation.min.sample=20
+monitor.deviation.threshold.winrate=0.15
+monitor.deviation.threshold.avg.win=0.20
+monitor.deviation.threshold.avg.loss=0.20
+monitor.deviation.threshold.slippage=0.30
+
+# 代理配置（可选，用于访问交易所 API）
+proxy.host=127.0.0.1
+proxy.port=18081
 ```
 
 通过 `ConfigManager.getInstance()` 访问：
@@ -263,7 +363,22 @@ ConfigManager config = ConfigManager.getInstance();
 String apiKey = config.getBinanceApiKey();
 BigDecimal risk = new BigDecimal(config.getProperty("risk.per.trade"));
 int cooldown = config.getIntProperty("strategy.cooldown.bars", 3);
+boolean proxyEnabled = config.isProxyEnabled();
+String proxyHost = config.getProxyHost();
+int proxyPort = config.getProxyPort();
 ```
+
+**代理使用**：如果需要通过代理访问交易所 API（例如使用 Clash、V2Ray 等工具），在 `config.properties` 中配置：
+```properties
+proxy.host=127.0.0.1
+proxy.port=18081
+```
+`TradingSystemMain` 会自动检测并配置代理。代理状态通过 `ConfigManager.isProxyEnabled()` 判断（需要 host 非空且 port > 0）。
+
+**代理配置示例**：
+- Clash 默认 HTTP 代理：127.0.0.1:7890
+- V2Ray 默认 HTTP 代理：127.0.0.1:10809
+- 使用代理可解决部分地区无法直接访问 Binance API 的问题
 
 ### 2. Builder 模式（代码配置）
 用于创建可复用的配置对象：
@@ -304,23 +419,27 @@ StrategyConfig strategyConfig = StrategyConfig.builder()
 - 无组合级风险管理（仅策略级风控）
 - 回测使用简化的手续费模型（无阶梯费率）
 - WebSocket 重连机制已实现但未充分测试
-- 目前没有单元测试（src/test/ 为空）
+- 监控功能已实现但默认禁用，需要手动启用测试
+- 性能偏差监控尚未实现（计划中）
+- **策略向后兼容**：旧策略（如 `DualMovingAverageStrategy`）仍可使用旧的 `onPositionUpdate(Position, KLine)` 方法，但无法在持仓期间重新计算指标
 
 ### 待办优先级
 1. **高优先级**：
    - 完成 `BinanceExchange.placeOrder()` 实现（实盘交易必需）
-   - 添加核心模块的单元测试（指标、风控、策略）
+   - 扩展单元测试覆盖（补充策略、执行、市场模块测试）
    - 改进 WebSocket 重连和错误处理
 
 2. **中优先级**：
    - 实现 OKX 交易所
    - 添加持仓同步机制
    - 完善回测手续费模型
+   - 实现性能偏差监控（PerformanceDeviationMonitor）
 
 3. **低优先级**：
    - 添加更多示例策略（突破、回撤入场等）
    - 实现策略参数优化器
    - 添加组合级风控
+   - 增强回测统计（EnhancedBacktestResult）
 
 ## 常见问题和调试
 
@@ -330,9 +449,16 @@ StrategyConfig strategyConfig = StrategyConfig.builder()
 - **编译失败**：确保 Java 版本为 17+（`java -version` 检查）
 
 ### 回测问题
-- **无数据**：确保网络可访问交易所 API，检查防火墙设置
+- **无数据**：确保网络可访问交易所 API，检查防火墙设置或代理配置
 - **结果异常**：检查回测时间范围是否合理，手续费和滑点设置是否正确
 - **策略无信号**：可能处于冷却期，或市场条件不满足入场条件
+- **双均线策略交易频率低**：默认启用了成交量确认过滤（`requireVolumeConfirmation=true`），需要当前成交量 > 20周期平均成交量 × 1.2。可在 `StrategyConfig` 中关闭：
+  ```java
+  StrategyConfig config = StrategyConfig.builder()
+      .requireVolumeConfirmation(false)  // 关闭成交量确认
+      .build();
+  ```
+- **持仓期间出场不触发**：确保策略重写了 `onPositionUpdate(Position, KLine, List<KLine>)` 方法，并在其中实时计算指标。如果使用旧方法签名 `onPositionUpdate(Position, KLine)`，只能获取当前K线，无法计算需要历史数据的指标（RSI、ATR、EMA等）
 
 ### 实盘问题
 - **API 连接失败**：验证 API 密钥正确性，检查 IP 白名单设置
@@ -358,3 +484,7 @@ grep "MyStrategy" logs/trades.log
 - 订单记录：`data/orders/{orderId}.json`（用于崩溃恢复）
 - 交易记录：`data/trades/{date}.csv`（用于后续分析）
 - 定期备份 `data/` 目录以防止数据丢失
+### 全局设置
+- 与用户对话请用中文回答
+- 编写的代码注释请用中文
+- 遵循 Java 编码规范和最佳实践
