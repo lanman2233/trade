@@ -172,9 +172,9 @@ public class BacktestEngine {
 
             BigDecimal triggerPrice = pos.getSide() == PositionSide.LONG ? kLine.getLow() : kLine.getHigh();
             if (pos.isStopLossTriggered(triggerPrice)) {
-                // 平仓
-                BigDecimal exitPrice = applySlippage(pos.getStopLoss(), getExitSide(pos), true);
-                closePosition(pos, exitPrice, pos.getQuantity(), kLine.getCloseTime(), ExitReason.STOP_LOSS, false);
+                // 平仓（限价单，无滑点）
+                BigDecimal exitPrice = applySlippage(pos.getStopLoss(), getExitSide(pos), false);
+                closePosition(pos, exitPrice, pos.getQuantity(), kLine.getCloseTime(), ExitReason.STOP_LOSS, true);
             }
         }
     }
@@ -225,11 +225,11 @@ public class BacktestEngine {
             }
         }
 
-        // 计算入场价格（包含滑点）
+        // 计算入场价格（根据 maker 标志决定是否应用滑点）
         BigDecimal basePrice = signal.getPrice() != null && signal.getPrice().compareTo(BigDecimal.ZERO) > 0
                 ? signal.getPrice()
                 : kLine.getClose();
-        BigDecimal entryPrice = applySlippage(basePrice, signal.getSide(), true);
+        BigDecimal entryPrice = applySlippage(basePrice, signal.getSide(), !signal.isMaker());
 
         // 计算仓位大小
         BigDecimal quantity = calculateQuantity(signal.getQuantity(), entryPrice);
@@ -246,7 +246,7 @@ public class BacktestEngine {
         );
 
         positions.add(position);
-        BigDecimal entryFee = calculateFee(entryPrice, quantity, false);
+        BigDecimal entryFee = calculateFee(entryPrice, quantity, signal.isMaker());
         balance = balance.subtract(entryFee);
         entryFees.put(position, entryFee);
 
@@ -446,12 +446,14 @@ public class BacktestEngine {
 
         // 计算最大回撤
         BigDecimal maxDrawdown = calculateMaxDrawdown();
+        // 计算最大盈利
+        BigDecimal maxProfit = calculateMaxProfit();
 
         // 计算年化收益率（复合年化收益率 CAGR）
         // CAGR = (final_value / initial_value)^(365/days) - 1
         long days = ChronoUnit.DAYS.between(config.getStartTime(), config.getEndTime());
         BigDecimal annualizedReturn = BigDecimal.ZERO;
-        if (days > 0 && finalBalance.compareTo(BigDecimal.ZERO) > 0 
+        if (days > 0 && finalBalance.compareTo(BigDecimal.ZERO) > 0
                 && config.getInitialCapital().compareTo(BigDecimal.ZERO) > 0) {
             double ratio = finalBalance.doubleValue() / config.getInitialCapital().doubleValue();
             double yearsExponent = 365.0 / days;
@@ -465,7 +467,7 @@ public class BacktestEngine {
         // 使用 closedTrades 进行统计（包含真实的盈亏数据）
         if (closedTrades.isEmpty()) {
             return new BacktestResult(
-                    totalReturn, annualizedReturn, maxDrawdown, sharpeRatio,
+                    totalReturn, annualizedReturn, maxDrawdown, maxProfit, sharpeRatio,
                     0, 0, 0, BigDecimal.ZERO, BigDecimal.ZERO,
                     BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                     BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, equityCurve
@@ -479,7 +481,7 @@ public class BacktestEngine {
 
         int winningTrades = (int) pnlList.stream().filter(p -> p.compareTo(BigDecimal.ZERO) > 0).count();
         int losingTrades = (int) pnlList.stream().filter(p -> p.compareTo(BigDecimal.ZERO) < 0).count();
-        
+
         BigDecimal winRate = BigDecimal.ZERO;
         if (!closedTrades.isEmpty()) {
             winRate = BigDecimal.valueOf(winningTrades)
@@ -516,7 +518,7 @@ public class BacktestEngine {
         }
 
         return new BacktestResult(
-                totalReturn, annualizedReturn, maxDrawdown, sharpeRatio,
+                totalReturn, annualizedReturn, maxDrawdown, maxProfit, sharpeRatio,
                 closedTrades.size(), winningTrades, losingTrades, winRate, profitFactor,
                 avgWin, avgLoss, largestWin, largestLoss,
                 expectancy, totalFee, feeImpactPercent, equityCurve
@@ -540,6 +542,19 @@ public class BacktestEngine {
         }
 
         return maxDd;
+    }
+
+    /**
+     * 计算最大盈利（账户峰值相对初始资金的涨幅）
+     */
+    private BigDecimal calculateMaxProfit() {
+        BigDecimal initialCapital = config.getInitialCapital();
+        BigDecimal maxEquity = equityCurve.stream()
+                .max(BigDecimal::compareTo)
+                .orElse(initialCapital);
+        return maxEquity.subtract(initialCapital)
+                .divide(initialCapital, 4, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100));
     }
 
     private BigDecimal calculateSharpeRatio() {

@@ -130,7 +130,8 @@ public class BtcMa200Rsi6TrendStrategy extends AbstractStrategy implements Backt
                     takeProfit,
                     "trend_long_rsi",
                     metrics,
-                    null
+                    null,
+                    true  // maker=true，限价单使用 maker 费率
             );
         }
 
@@ -148,7 +149,8 @@ public class BtcMa200Rsi6TrendStrategy extends AbstractStrategy implements Backt
                     takeProfit,
                     "trend_short_rsi",
                     metrics,
-                    null
+                    null,
+                    true  // maker=true，限价单使用 maker 费率
             );
         }
 
@@ -295,7 +297,8 @@ public class BtcMa200Rsi6TrendStrategy extends AbstractStrategy implements Backt
                 BigDecimal.ZERO,
                 msg,
                 null,
-                reason
+                reason,
+                true  // maker=true，限价单使用 maker 费率
         );
     }
 

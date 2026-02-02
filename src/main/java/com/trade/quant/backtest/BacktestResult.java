@@ -8,6 +8,7 @@ public class BacktestResult {
     private final BigDecimal totalReturn;
     private final BigDecimal annualizedReturn;
     private final BigDecimal maxDrawdown;
+    private final BigDecimal maxProfit;
     private final BigDecimal sharpeRatio;
     private final int totalTrades;
     private final int winningTrades;
@@ -26,6 +27,7 @@ public class BacktestResult {
     public BacktestResult(BigDecimal totalReturn,
                           BigDecimal annualizedReturn,
                           BigDecimal maxDrawdown,
+                          BigDecimal maxProfit,
                           BigDecimal sharpeRatio,
                           int totalTrades,
                           int winningTrades,
@@ -43,6 +45,7 @@ public class BacktestResult {
         this.totalReturn = totalReturn;
         this.annualizedReturn = annualizedReturn;
         this.maxDrawdown = maxDrawdown;
+        this.maxProfit = maxProfit;
         this.sharpeRatio = sharpeRatio;
         this.totalTrades = totalTrades;
         this.winningTrades = winningTrades;
@@ -62,6 +65,7 @@ public class BacktestResult {
     public BigDecimal getTotalReturn() { return totalReturn; }
     public BigDecimal getAnnualizedReturn() { return annualizedReturn; }
     public BigDecimal getMaxDrawdown() { return maxDrawdown; }
+    public BigDecimal getMaxProfit() { return maxProfit; }
     public BigDecimal getSharpeRatio() { return sharpeRatio; }
     public int getTotalTrades() { return totalTrades; }
     public int getWinningTrades() { return winningTrades; }
@@ -84,6 +88,7 @@ public class BacktestResult {
                 ==================== 回测结果 ====================
                 总收益率:           %.2f%%
                 年化收益率:         %.2f%%
+                最大盈利:           %.2f%%
                 最大回撤:           %.2f%%
                 夏普比率:           %.2f
 
@@ -106,7 +111,7 @@ public class BacktestResult {
                   手续费影响:       %.2f%%
                 =================================================
                 """,
-                totalReturn, annualizedReturn, maxDrawdown, sharpeRatio,
+                totalReturn, annualizedReturn, maxProfit, maxDrawdown, sharpeRatio,
                 totalTrades, winningTrades, losingTrades, winRate, profitFactor,
                 avgWin, avgLoss, largestWin, largestLoss, expectancy,
                 feeImpact, feeImpactPercent
