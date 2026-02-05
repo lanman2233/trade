@@ -8,6 +8,7 @@ import com.trade.quant.market.MarketDataManager;
 import com.trade.quant.risk.RiskConfig;
 import com.trade.quant.risk.RiskControl;
 import com.trade.quant.risk.StopLossManager;
+import com.trade.quant.strategy.impl.BtcDonchian48BreakoutStrategy;
 import com.trade.quant.strategy.impl.BtcMa200Rsi6TrendStrategy;
 import com.trade.quant.strategy.impl.DualMovingAverageStrategy;
 import com.trade.quant.strategy.impl.HFVSStrategy;
@@ -59,7 +60,8 @@ public class TradingSystemMain {
 
             // 配置回测参数
             Symbol symbol = Symbol.of("BTC-USDT");
-            Interval interval = Interval.FIFTEEN_MINUTES;
+            String intervalCode = configManager.getProperty("backtest.interval", Interval.FIFTEEN_MINUTES.getCode());
+            Interval interval = Interval.fromCode(intervalCode);
 
             BacktestConfig config = BacktestConfig.builder()
                     .symbol(symbol)
@@ -70,6 +72,8 @@ public class TradingSystemMain {
                     .makerFee(new BigDecimal(configManager.getProperty("backtest.maker.fee")))
                     .takerFee(new BigDecimal(configManager.getProperty("backtest.taker.fee")))
                     .slippage(new BigDecimal(configManager.getProperty("backtest.slippage")))
+                    .spread(configManager.getBigDecimalProperty("backtest.spread", BigDecimal.ZERO))
+                    .limitOrderMaxBars(configManager.getIntProperty("backtest.limit.order.max.bars", 3))
                     .leverage(new BigDecimal(configManager.getProperty("backtest.leverage")))
                     .build();
 
@@ -99,7 +103,7 @@ public class TradingSystemMain {
 
             // ==================== 策略选择 ====================
             // 使用 HFVS 策略（高频波动回归）
-            BtcMa200Rsi6TrendStrategy strategy = new BtcMa200Rsi6TrendStrategy(
+            BtcDonchian48BreakoutStrategy strategy = new BtcDonchian48BreakoutStrategy(
                     symbol, interval, strategyConfig
             );
 

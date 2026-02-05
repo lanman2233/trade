@@ -23,7 +23,7 @@ public class BacktestTradeLogger {
 
     public void record(ClosedTrade trade, ExitReason reason, TradeMetrics metrics) {
         String line = String.format(
-                "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
+                "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
                 trade.getEntryTime(),
                 trade.getExitTime(),
                 trade.getStrategyId(),
@@ -54,11 +54,10 @@ public class BacktestTradeLogger {
             if (filePath.getParent() != null) {
                 Files.createDirectories(filePath.getParent());
             }
-            if (!Files.exists(filePath)) {
-                Files.writeString(filePath,
-                        "entry_time,exit_time,strategy_id,symbol,side,entry_price,exit_price,quantity,pnl,fee,net_pnl,atr_pct,rsi,ema20,ema200,exit_reason\n",
-                        StandardOpenOption.CREATE);
-            }
+            Files.writeString(filePath,
+                    "entry_time,exit_time,strategy_id,symbol,side,entry_price,exit_price,quantity,pnl,fee,net_pnl,atr_pct,rsi,ema20,ema200,exit_reason\n",
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING);
         } catch (IOException e) {
             throw new RuntimeException("初始化回测交易日志失败: " + e.getMessage(), e);
         }

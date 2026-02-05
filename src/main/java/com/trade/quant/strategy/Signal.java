@@ -22,6 +22,10 @@ public class Signal {
     private final TradeMetrics metrics;
     private final ExitReason exitReason;
     private final boolean maker;
+    private final Integer delayBars;
+    private final boolean useSignalPrice;
+    private final boolean skipFriction;
+    private final boolean engineStopLossEnabled;
     private final long timestamp;
 
     public Signal(String strategyId, Symbol symbol, SignalType type, Side side,
@@ -41,6 +45,16 @@ public class Signal {
                  BigDecimal price, BigDecimal quantity, BigDecimal stopLoss,
                  BigDecimal takeProfit, String reason,
                  TradeMetrics metrics, ExitReason exitReason, boolean maker) {
+        this(strategyId, symbol, type, side, price, quantity, stopLoss, takeProfit, reason,
+                metrics, exitReason, maker, null, false, false, true);
+    }
+
+    public Signal(String strategyId, Symbol symbol, SignalType type, Side side,
+                 BigDecimal price, BigDecimal quantity, BigDecimal stopLoss,
+                 BigDecimal takeProfit, String reason,
+                 TradeMetrics metrics, ExitReason exitReason, boolean maker,
+                 Integer delayBars, boolean useSignalPrice, boolean skipFriction,
+                 boolean engineStopLossEnabled) {
         this.strategyId = strategyId;
         this.symbol = symbol;
         this.type = type;
@@ -53,6 +67,10 @@ public class Signal {
         this.metrics = metrics;
         this.exitReason = exitReason;
         this.maker = maker;
+        this.delayBars = delayBars;
+        this.useSignalPrice = useSignalPrice;
+        this.skipFriction = skipFriction;
+        this.engineStopLossEnabled = engineStopLossEnabled;
         this.timestamp = System.currentTimeMillis();
     }
 
@@ -68,6 +86,10 @@ public class Signal {
     public TradeMetrics getMetrics() { return metrics; }
     public ExitReason getExitReason() { return exitReason; }
     public boolean isMaker() { return maker; }
+    public Integer getDelayBars() { return delayBars; }
+    public boolean isUseSignalPrice() { return useSignalPrice; }
+    public boolean isSkipFriction() { return skipFriction; }
+    public boolean isEngineStopLossEnabled() { return engineStopLossEnabled; }
     public long getTimestamp() { return timestamp; }
 
     /**

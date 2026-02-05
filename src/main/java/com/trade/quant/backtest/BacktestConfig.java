@@ -19,7 +19,9 @@ public class BacktestConfig {
     private final BigDecimal makerFee;
     private final BigDecimal takerFee;
     private final BigDecimal slippage;
+    private final BigDecimal spread;
     private final BigDecimal leverage;
+    private final int limitOrderMaxBars;
 
     private BacktestConfig(Builder builder) {
         this.symbol = builder.symbol;
@@ -30,7 +32,9 @@ public class BacktestConfig {
         this.makerFee = builder.makerFee;
         this.takerFee = builder.takerFee;
         this.slippage = builder.slippage;
+        this.spread = builder.spread;
         this.leverage = builder.leverage;
+        this.limitOrderMaxBars = builder.limitOrderMaxBars;
     }
 
     public Symbol getSymbol() { return symbol; }
@@ -41,7 +45,9 @@ public class BacktestConfig {
     public BigDecimal getMakerFee() { return makerFee; }
     public BigDecimal getTakerFee() { return takerFee; }
     public BigDecimal getSlippage() { return slippage; }
+    public BigDecimal getSpread() { return spread; }
     public BigDecimal getLeverage() { return leverage; }
+    public int getLimitOrderMaxBars() { return limitOrderMaxBars; }
 
     public static Builder builder() {
         return new Builder();
@@ -56,7 +62,9 @@ public class BacktestConfig {
         private BigDecimal makerFee = BigDecimal.valueOf(0.0002);      // 0.02% maker费率
         private BigDecimal takerFee = BigDecimal.valueOf(0.0004);      // 0.04% taker费率
         private BigDecimal slippage = BigDecimal.valueOf(0.0005);      // 0.05% 滑点
+        private BigDecimal spread = BigDecimal.ZERO;                   // full spread, e.g. 0.0002 = 2 bps
         private BigDecimal leverage = BigDecimal.ONE;                  // 默认无杠杆
+        private int limitOrderMaxBars = 3;                             // limit order max pending bars (0=never)
 
         public Builder symbol(Symbol symbol) {
             this.symbol = symbol;
@@ -98,17 +106,30 @@ public class BacktestConfig {
             return this;
         }
 
+        public Builder spread(BigDecimal spread) {
+            this.spread = spread;
+            return this;
+        }
+
         public Builder leverage(BigDecimal leverage) {
             this.leverage = leverage;
             return this;
         }
 
+        public Builder limitOrderMaxBars(int limitOrderMaxBars) {
+            this.limitOrderMaxBars = limitOrderMaxBars;
+            return this;
+        }
+
         public BacktestConfig build() {
             if (symbol == null || interval == null || startTime == null || endTime == null) {
-                throw new IllegalStateException("symbol, interval, startTime, endTime 必须设置");
+                throw new IllegalStateException("symbol, interval, startTime, endTime are required");
             }
             if (startTime.isAfter(endTime)) {
-                throw new IllegalArgumentException("startTime 不能晚于 endTime");
+                throw new IllegalArgumentException("startTime must be <= endTime");
+            }
+            if (limitOrderMaxBars < 0) {
+                throw new IllegalArgumentException("limitOrderMaxBars must be >= 0");
             }
             return new BacktestConfig(this);
         }
