@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.StringJoiner;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -292,7 +293,8 @@ public class OkxExchange implements Exchange, ProtectiveStopCapableExchange {
                 body.put("algoClOrdId", algoClOrdId);
             }
 
-            JsonNode root = privateRequest("/api/v5/trade/order-algo", "POST", null, body);
+            // OKX trade APIs may return top-level code=1 with per-row sCode/sMsg details.
+            JsonNode root = privateRequest("/api/v5/trade/order-algo", "POST", null, body, true);
             JsonNode data = root.path("data");
             if (!data.isArray() || data.isEmpty()) {
                 throw new ExchangeException(ExchangeException.ErrorCode.ORDER_REJECTED,
@@ -315,7 +317,7 @@ public class OkxExchange implements Exchange, ProtectiveStopCapableExchange {
             throw e;
         } catch (IOException e) {
             throw new ExchangeException(ExchangeException.ErrorCode.API_ERROR,
-                    "Place protective stop failed", e);
+                    "Place protective stop failed: " + e.getMessage(), e);
         }
     }
 
@@ -355,7 +357,7 @@ public class OkxExchange implements Exchange, ProtectiveStopCapableExchange {
             for (int i = 0; i < toCancel.size(); i += CANCEL_ALGO_BATCH_SIZE) {
                 int end = Math.min(i + CANCEL_ALGO_BATCH_SIZE, toCancel.size());
                 List<Map<String, Object>> batch = new ArrayList<>(toCancel.subList(i, end));
-                JsonNode cancelRoot = privateRequest("/api/v5/trade/cancel-algos", "POST", null, batch);
+                JsonNode cancelRoot = privateRequest("/api/v5/trade/cancel-algos", "POST", null, batch, true);
                 JsonNode cancelData = cancelRoot.path("data");
                 if (!cancelData.isArray()) {
                     continue;
@@ -562,7 +564,8 @@ public class OkxExchange implements Exchange, ProtectiveStopCapableExchange {
                 body.put("px", price.toPlainString());
             }
 
-            JsonNode root = privateRequest("/api/v5/trade/order", "POST", null, body);
+            // OKX trade APIs may return top-level code=1 with per-row sCode/sMsg details.
+            JsonNode root = privateRequest("/api/v5/trade/order", "POST", null, body, true);
             JsonNode data = root.path("data");
             if (!data.isArray() || data.isEmpty()) {
                 throw new ExchangeException(ExchangeException.ErrorCode.ORDER_REJECTED, "Place order returned empty data");
@@ -584,7 +587,11 @@ public class OkxExchange implements Exchange, ProtectiveStopCapableExchange {
         } catch (ExchangeException e) {
             throw e;
         } catch (IOException e) {
-            throw new ExchangeException(ExchangeException.ErrorCode.API_ERROR, "Place order failed", e);
+            throw new ExchangeException(
+                    ExchangeException.ErrorCode.API_ERROR,
+                    "Place order failed: " + e.getMessage(),
+                    e
+            );
         }
     }
 
@@ -600,7 +607,7 @@ public class OkxExchange implements Exchange, ProtectiveStopCapableExchange {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("instId", rules.instId);
             body.put("ordId", rawOrderId);
-            JsonNode root = privateRequest("/api/v5/trade/cancel-order", "POST", null, body);
+            JsonNode root = privateRequest("/api/v5/trade/cancel-order", "POST", null, body, true);
             JsonNode data = root.path("data");
             if (data.isArray() && !data.isEmpty()) {
                 JsonNode row = data.get(0);
@@ -1106,10 +1113,8 @@ public class OkxExchange implements Exchange, ProtectiveStopCapableExchange {
         if ("cross".equals(explicit) || "isolated".equals(explicit) || "cash".equals(explicit)) {
             return explicit;
         }
-        String marginType = cfg.getProperty("live.margin.type", "").trim().toUpperCase(Locale.ROOT);
-        if ("ISOLATED".equals(marginType)) {
-            return "isolated";
-        }
+        // Default to cross for OKX unless explicitly configured by okx.td.mode.
+        // Do not implicitly reuse Binance-style live.margin.type here.
         return "cross";
     }
 
@@ -1287,7 +1292,7 @@ public class OkxExchange implements Exchange, ProtectiveStopCapableExchange {
         item.put("algoId", algoId);
         item.put("instId", instId);
         body.add(item);
-        JsonNode root = privateRequest("/api/v5/trade/cancel-algos", "POST", null, body);
+        JsonNode root = privateRequest("/api/v5/trade/cancel-algos", "POST", null, body, true);
         JsonNode data = root.path("data");
         if (!data.isArray() || data.isEmpty()) {
             return false;
@@ -1326,7 +1331,12 @@ public class OkxExchange implements Exchange, ProtectiveStopCapableExchange {
         if (orderId == null || orderId.isBlank()) {
             return null;
         }
-        return orderId.length() <= 32 ? orderId : orderId.substring(0, 32);
+        // OKX requires clOrdId to be <= 32 chars and alphanumeric.
+        String normalized = orderId.replaceAll("[^A-Za-z0-9]", "");
+        if (normalized.isBlank()) {
+            normalized = "ord" + Integer.toUnsignedString(orderId.hashCode(), 36);
+        }
+        return normalized.length() <= 32 ? normalized : normalized.substring(0, 32);
     }
 
     private JsonNode queryOrderNode(String instId, String idField, String idValue) throws IOException {
@@ -1415,6 +1425,14 @@ public class OkxExchange implements Exchange, ProtectiveStopCapableExchange {
                                     String method,
                                     Map<String, String> queryParams,
                                     Object bodyParams) throws IOException {
+        return privateRequest(path, method, queryParams, bodyParams, false);
+    }
+
+    private JsonNode privateRequest(String path,
+                                    String method,
+                                    Map<String, String> queryParams,
+                                    Object bodyParams,
+                                    boolean allowCodeOneWithPerRowStatus) throws IOException {
         String query = buildQueryString(queryParams);
         String requestPath = query.isEmpty() ? path : path + "?" + query;
         String upperMethod = method.toUpperCase(Locale.ROOT);
@@ -1448,7 +1466,7 @@ public class OkxExchange implements Exchange, ProtectiveStopCapableExchange {
             if (!response.isSuccessful()) {
                 throw new IOException("HTTP " + response.code() + ": " + body);
             }
-            return parseAndValidateOkxResponse(body);
+            return parseAndValidateOkxResponse(body, allowCodeOneWithPerRowStatus);
         }
     }
 
@@ -1476,13 +1494,74 @@ public class OkxExchange implements Exchange, ProtectiveStopCapableExchange {
     }
 
     private JsonNode parseAndValidateOkxResponse(String body) throws IOException {
+        return parseAndValidateOkxResponse(body, false);
+    }
+
+    private JsonNode parseAndValidateOkxResponse(String body, boolean allowCodeOneWithPerRowStatus) throws IOException {
         JsonNode root = objectMapper.readTree(body);
         String code = root.path("code").asText("");
-        if (!"0".equals(code)) {
-            String msg = root.path("msg").asText("unknown");
+        if ("0".equals(code)) {
+            return root;
+        }
+        JsonNode data = root.path("data");
+        if (allowCodeOneWithPerRowStatus && "1".equals(code) && hasPerRowStatus(data)) {
+            return root;
+        }
+        String msg = root.path("msg").asText("unknown");
+        String detail = buildPerRowStatusDetail(data);
+        if (detail.isBlank()) {
             throw new IOException("OKX API error: code=" + code + ", msg=" + msg);
         }
-        return root;
+        throw new IOException("OKX API error: code=" + code + ", msg=" + msg + ", detail=" + detail);
+    }
+
+    private boolean hasPerRowStatus(JsonNode data) {
+        if (!data.isArray() || data.isEmpty()) {
+            return false;
+        }
+        JsonNode first = data.get(0);
+        return first.has("sCode") || first.has("sMsg");
+    }
+
+    private String buildPerRowStatusDetail(JsonNode data) {
+        if (!data.isArray() || data.isEmpty()) {
+            return "";
+        }
+        StringJoiner joiner = new StringJoiner("; ");
+        int count = Math.min(data.size(), 3);
+        for (int i = 0; i < count; i++) {
+            JsonNode row = data.get(i);
+            String sCode = row.path("sCode").asText("");
+            String sMsg = row.path("sMsg").asText("");
+            String ordId = row.path("ordId").asText("");
+            String clOrdId = row.path("clOrdId").asText("");
+            StringBuilder part = new StringBuilder();
+            if (!sCode.isBlank()) {
+                part.append("sCode=").append(sCode);
+            }
+            if (!sMsg.isBlank()) {
+                if (part.length() > 0) {
+                    part.append(", ");
+                }
+                part.append("sMsg=").append(sMsg);
+            }
+            if (!ordId.isBlank()) {
+                if (part.length() > 0) {
+                    part.append(", ");
+                }
+                part.append("ordId=").append(ordId);
+            }
+            if (!clOrdId.isBlank()) {
+                if (part.length() > 0) {
+                    part.append(", ");
+                }
+                part.append("clOrdId=").append(clOrdId);
+            }
+            if (part.length() > 0) {
+                joiner.add(part.toString());
+            }
+        }
+        return joiner.toString();
     }
 
     private String buildQueryString(Map<String, String> params) {

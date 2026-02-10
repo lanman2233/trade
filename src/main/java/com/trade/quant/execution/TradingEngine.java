@@ -149,7 +149,7 @@ public class TradingEngine {
             }
 
         } catch (Exception e) {
-            logger.error("Position sync failed: {}", e.getMessage(), e);
+            logger.error("Signal handling failed: {}", e.getMessage(), e);
         }
     }
 
