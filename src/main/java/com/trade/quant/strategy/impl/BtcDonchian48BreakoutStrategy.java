@@ -10,6 +10,7 @@ import com.trade.quant.core.PositionSide;
 import com.trade.quant.core.Side;
 import com.trade.quant.core.Symbol;
 import com.trade.quant.strategy.AbstractStrategy;
+import com.trade.quant.strategy.EquityAwareStrategy;
 import com.trade.quant.strategy.ExitReason;
 import com.trade.quant.strategy.Signal;
 import com.trade.quant.strategy.SignalType;
@@ -25,7 +26,7 @@ import java.util.Map;
 /**
  * BTCUSDT 15m Donchian48 breakout strategy (immediate market fill).
  */
-public class BtcDonchian48BreakoutStrategy extends AbstractStrategy implements BacktestTradeListener {
+public class BtcDonchian48BreakoutStrategy extends AbstractStrategy implements BacktestTradeListener, EquityAwareStrategy {
 
     private static final int DONCHIAN_PERIOD = 48;
     private static final int ATR_PERIOD = 48;
@@ -39,6 +40,7 @@ public class BtcDonchian48BreakoutStrategy extends AbstractStrategy implements B
     private final BigDecimal minAtrPct;
     private final BigDecimal costRate;
     private final BigDecimal initialEquity;
+    private final boolean liveMode;
 
     private BigDecimal equity;
 
@@ -47,6 +49,12 @@ public class BtcDonchian48BreakoutStrategy extends AbstractStrategy implements B
     private final Map<Position, BigDecimal> stopLevel;
 
     public BtcDonchian48BreakoutStrategy(Symbol symbol, Interval interval, StrategyConfig config) {
+        this(symbol, interval, config, "live".equalsIgnoreCase(
+                ConfigManager.getInstance().getProperty("app.mode", "backtest")
+        ));
+    }
+
+    public BtcDonchian48BreakoutStrategy(Symbol symbol, Interval interval, StrategyConfig config, boolean liveMode) {
         super("BTC-DONCHIAN48-BREAKOUT", symbol, interval, config);
         ConfigManager cfg = ConfigManager.getInstance();
         this.riskPct = cfg.getBigDecimalProperty("risk.per.trade", new BigDecimal("0.01"));
@@ -54,9 +62,10 @@ public class BtcDonchian48BreakoutStrategy extends AbstractStrategy implements B
         this.minQty = cfg.getBigDecimalProperty("btc.donchian.min.qty", new BigDecimal("0.001"));
         this.minNotional = cfg.getBigDecimalProperty("btc.donchian.min.notional", new BigDecimal("5"));
         this.minAtrPct = cfg.getBigDecimalProperty("btc.donchian.min.atr.pct", new BigDecimal("0.004"));
+        this.liveMode = liveMode;
         BigDecimal spread = cfg.getBigDecimalProperty("backtest.spread", BigDecimal.ZERO);
         BigDecimal slippage = cfg.getBigDecimalProperty("backtest.slippage", BigDecimal.ZERO);
-        this.costRate = spread.add(slippage);
+        this.costRate = this.liveMode ? BigDecimal.ZERO : spread.add(slippage);
         this.initialEquity = cfg.getBigDecimalProperty("backtest.initial.capital", new BigDecimal("10000"));
         this.equity = initialEquity;
         this.highestSinceEntry = new HashMap<>();
@@ -96,10 +105,18 @@ public class BtcDonchian48BreakoutStrategy extends AbstractStrategy implements B
         BigDecimal high = current.getHigh();
         BigDecimal low = current.getLow();
         if (high.compareTo(upper) >= 0) {
-            return buildEntrySignal(Side.BUY, current, upper, lower, atr);
+            Signal signal = buildEntrySignal(Side.BUY, current, upper, lower, atr);
+            if (signal != null) {
+                recordTrade();
+            }
+            return signal;
         }
         if (low.compareTo(lower) <= 0) {
-            return buildEntrySignal(Side.SELL, current, upper, lower, atr);
+            Signal signal = buildEntrySignal(Side.SELL, current, upper, lower, atr);
+            if (signal != null) {
+                recordTrade();
+            }
+            return signal;
         }
         return null;
     }
@@ -127,6 +144,7 @@ public class BtcDonchian48BreakoutStrategy extends AbstractStrategy implements B
                 stop = trail;
             }
             stopLevel.put(position, stop);
+            position.updateStopLoss(stop);
             if (currentKLine.getLow().compareTo(stop) <= 0) {
                 return buildExitSignal(position, stop, Side.SELL);
             }
@@ -141,6 +159,7 @@ public class BtcDonchian48BreakoutStrategy extends AbstractStrategy implements B
                 stop = trail;
             }
             stopLevel.put(position, stop);
+            position.updateStopLoss(stop);
             if (currentKLine.getHigh().compareTo(stop) >= 0) {
                 return buildExitSignal(position, stop, Side.BUY);
             }
@@ -177,6 +196,13 @@ public class BtcDonchian48BreakoutStrategy extends AbstractStrategy implements B
         stopLevel.clear();
     }
 
+    @Override
+    public void updateEquity(BigDecimal equity) {
+        if (equity != null && equity.compareTo(BigDecimal.ZERO) > 0) {
+            this.equity = equity;
+        }
+    }
+
     private Signal buildEntrySignal(Side side, KLine current, BigDecimal upper, BigDecimal lower, BigDecimal atr) {
         BigDecimal theoretical = side == Side.BUY
                 ? current.getOpen().max(upper)
@@ -186,8 +212,8 @@ public class BtcDonchian48BreakoutStrategy extends AbstractStrategy implements B
         BigDecimal stopPrice = side == Side.BUY
                 ? entryFill.subtract(stopDistance)
                 : entryFill.add(stopDistance);
-        BigDecimal quantity = calculateQuantity(entryFill, stopPrice);
-        if (quantity.compareTo(BigDecimal.ZERO) <= 0) {
+        BigDecimal quantity = liveMode ? BigDecimal.ZERO : calculateQuantity(entryFill, stopPrice);
+        if (!liveMode && quantity.compareTo(BigDecimal.ZERO) <= 0) {
             return null;
         }
 

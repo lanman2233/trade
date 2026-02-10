@@ -3,7 +3,7 @@ package com.trade.quant.strategy;
 import java.math.BigDecimal;
 
 /**
- * 浜ゆ槗鍏ュ満鏁版嵁璁板綍
+ * 交易入场数据记录
  */
 public record TradeMetrics(
         BigDecimal atrPct,

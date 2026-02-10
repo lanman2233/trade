@@ -4,26 +4,26 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
- * 订单
- * 系统内交易意图的表示，非交易所订单
+ * 订单（系统内部交易意图）
  */
 public class Order {
-    private final String orderId;          // 订单ID（UUID）
-    private final Symbol symbol;            // 交易对
-    private final Side side;                // 方向
-    private final OrderType type;           // 订单类型
-    private final BigDecimal quantity;      // 数量（张）
-    private BigDecimal price;               // 价格（仅限价单）
-    private OrderStatus status;             // 状态
-    private final BigDecimal stopLoss;      // 止损价格（必填）
-    private final BigDecimal takeProfit;    // 止盈价格（可选）
-    private final Instant createTime;       // 创建时间
-    private Instant fillTime;               // 成交时间
-    private BigDecimal avgFillPrice;        // 平均成交价
-    private BigDecimal filledQuantity;      // 已成交数量
-    private final String clientOrderId;     // 客户端订单ID
-    private String exchangeOrderId;         // 交易所订单ID
-    private final String strategyId;        // 所属策略ID
+    private final String orderId;
+    private final Symbol symbol;
+    private final Side side;
+    private final OrderType type;
+    private final BigDecimal quantity;
+    private BigDecimal price;
+    private OrderStatus status;
+    private final BigDecimal stopLoss;
+    private final BigDecimal takeProfit;
+    private final Instant createTime;
+    private Instant fillTime;
+    private BigDecimal avgFillPrice;
+    private BigDecimal filledQuantity;
+    private final String clientOrderId;
+    private String exchangeOrderId;
+    private final String strategyId;
+    private final boolean reduceOnly;
 
     private Order(Builder builder) {
         this.orderId = builder.orderId;
@@ -39,6 +39,7 @@ public class Order {
         this.clientOrderId = builder.clientOrderId;
         this.exchangeOrderId = null;
         this.strategyId = builder.strategyId;
+        this.reduceOnly = builder.reduceOnly;
         this.filledQuantity = BigDecimal.ZERO;
     }
 
@@ -64,41 +65,27 @@ public class Order {
     public String getExchangeOrderId() { return exchangeOrderId; }
     public void setExchangeOrderId(String exchangeOrderId) { this.exchangeOrderId = exchangeOrderId; }
     public String getStrategyId() { return strategyId; }
+    public boolean isReduceOnly() { return reduceOnly; }
 
-    /**
-     * 计算订单价值
-     */
     public BigDecimal getValue() {
         BigDecimal effectivePrice = (type == OrderType.MARKET)
-            ? avgFillPrice != null ? avgFillPrice : BigDecimal.ZERO
-            : price != null ? price : BigDecimal.ZERO;
+                ? avgFillPrice != null ? avgFillPrice : BigDecimal.ZERO
+                : price != null ? price : BigDecimal.ZERO;
         return effectivePrice.multiply(quantity);
     }
 
-    /**
-     * 是否为限价单
-     */
     public boolean isLimitOrder() {
         return type == OrderType.LIMIT;
     }
 
-    /**
-     * 是否为市价单
-     */
     public boolean isMarketOrder() {
         return type == OrderType.MARKET;
     }
 
-    /**
-     * 是否已成交
-     */
     public boolean isFilled() {
         return status == OrderStatus.FILLED;
     }
 
-    /**
-     * 是否部分成交
-     */
     public boolean isPartiallyFilled() {
         return status == OrderStatus.PARTIAL;
     }
@@ -118,6 +105,7 @@ public class Order {
         private BigDecimal takeProfit;
         private String clientOrderId;
         private String strategyId;
+        private boolean reduceOnly;
 
         public Builder orderId(String orderId) {
             this.orderId = orderId;
@@ -169,18 +157,23 @@ public class Order {
             return this;
         }
 
+        public Builder reduceOnly(boolean reduceOnly) {
+            this.reduceOnly = reduceOnly;
+            return this;
+        }
+
         public Order build() {
             if (symbol == null || side == null || type == null) {
-                throw new IllegalStateException("symbol, side, type 必须设置");
+                throw new IllegalStateException("symbol, side, type must be set");
             }
             if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
-                throw new IllegalStateException("quantity 必须为正数");
+                throw new IllegalStateException("quantity must be positive");
             }
             if (type == OrderType.LIMIT && price == null) {
-                throw new IllegalStateException("限价单必须设置价格");
+                throw new IllegalStateException("limit order must set price");
             }
             if (stopLoss == null) {
-                throw new IllegalStateException("止损价格必须设置");
+                throw new IllegalStateException("stopLoss must be set");
             }
             return new Order(this);
         }
@@ -188,7 +181,7 @@ public class Order {
 
     @Override
     public String toString() {
-        return String.format("Order{id=%s, symbol=%s, side=%s, type=%s, qty=%s, price=%s, stopLoss=%s, status=%s}",
-                orderId, symbol, side, type, quantity, price, stopLoss, status);
+        return String.format("Order{id=%s, symbol=%s, side=%s, type=%s, qty=%s, price=%s, stopLoss=%s, reduceOnly=%s, status=%s}",
+                orderId, symbol, side, type, quantity, price, stopLoss, reduceOnly, status);
     }
 }

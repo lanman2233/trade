@@ -46,12 +46,22 @@ public class KLineDownloader {
 
     private static Exchange buildExchange() {
         ConfigManager configManager = ConfigManager.getInstance();
-        Exchange exchange = ExchangeFactory.createBinance();
-        exchange.setApiKey(
-                configManager.getBinanceApiKey(),
-                configManager.getBinanceApiSecret(),
-                null
-        );
+        String exchangeName = configManager.getProperty("backtest.exchange", "binance");
+
+        Exchange exchange = ExchangeFactory.createExchange(exchangeName);
+        if ("okx".equalsIgnoreCase(exchangeName)) {
+            exchange.setApiKey(
+                    configManager.getOkxApiKey(),
+                    configManager.getOkxApiSecret(),
+                    configManager.getOkxApiPassphrase()
+            );
+        } else {
+            exchange.setApiKey(
+                    configManager.getBinanceApiKey(),
+                    configManager.getBinanceApiSecret(),
+                    null
+            );
+        }
 
         if (configManager.isProxyEnabled()) {
             exchange.setProxy(configManager.getProxyHost(), configManager.getProxyPort());
@@ -69,7 +79,7 @@ public class KLineDownloader {
         long startMillis = startTime.toEpochMilli();
 
         while (endMillis > startMillis) {
-            List<KLine> batch = exchange.getKLines(symbol, interval, 1000, endMillis);
+            List<KLine> batch = exchange.getKLines(symbol, interval, 300, endMillis);
             if (batch.isEmpty()) {
                 break;
             }

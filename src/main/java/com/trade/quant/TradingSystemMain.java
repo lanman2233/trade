@@ -1,31 +1,37 @@
 package com.trade.quant;
 
-import com.trade.quant.backtest.*;
+import com.trade.quant.backtest.BacktestConfig;
+import com.trade.quant.backtest.BacktestEngine;
+import com.trade.quant.backtest.BacktestResult;
+import com.trade.quant.backtest.BacktestTradeLogger;
+import com.trade.quant.backtest.CsvKLineLoader;
 import com.trade.quant.core.*;
-import com.trade.quant.exchange.*;
-import com.trade.quant.execution.*;
+import com.trade.quant.exchange.BinanceExchange;
+import com.trade.quant.exchange.Exchange;
+import com.trade.quant.exchange.ExchangeFactory;
+import com.trade.quant.exchange.OkxExchange;
+import com.trade.quant.execution.FilePersistence;
+import com.trade.quant.execution.OrderExecutor;
+import com.trade.quant.execution.Persistence;
+import com.trade.quant.execution.TradingEngine;
 import com.trade.quant.market.MarketDataManager;
 import com.trade.quant.risk.RiskConfig;
 import com.trade.quant.risk.RiskControl;
 import com.trade.quant.risk.StopLossManager;
-import com.trade.quant.strategy.impl.BtcDonchian48BreakoutStrategy;
-import com.trade.quant.strategy.impl.BtcMa200Rsi6TrendStrategy;
-import com.trade.quant.strategy.impl.DualMovingAverageStrategy;
-import com.trade.quant.strategy.impl.HFVSStrategy;
 import com.trade.quant.strategy.StrategyConfig;
 import com.trade.quant.strategy.StrategyEngine;
+import com.trade.quant.strategy.impl.BtcDonchian48BreakoutStrategy;
 
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.List;
+import java.util.Locale;
 
 /**
- * 量化交易系统主类
+ * 量化交易系统主入口。
  */
 public class TradingSystemMain {
 
@@ -33,32 +39,29 @@ public class TradingSystemMain {
         System.out.println("""
             ================================================
                量化交易系统 v1.0
-               赚钱优先 · 风控第一 · 稳定运行
+               风控优先 · 稳定运行
             ================================================
             """);
 
-        // 根据命令行参数选择模式
-        runBacktest();
-        /*if (args.length > 0 && "backtest".equals(args[0])) {
-            runBacktest();
-        } else if (args.length > 0 && "live".equals(args[0])) {
+        String mode = args.length > 0 ? args[0] : ConfigManager.getInstance().getProperty("app.mode", "backtest");
+        if ("live".equalsIgnoreCase(mode)) {
             runLive();
+        } else if ("backtest".equalsIgnoreCase(mode)) {
+            runBacktest();
         } else {
             printUsage();
-        }*/
+        }
     }
 
     /**
-     * 运行回测
+     * 运行回测。
      */
     private static void runBacktest() {
         System.out.println("启动回测模式...\n");
 
         try {
-            // 加载配置
             ConfigManager configManager = ConfigManager.getInstance();
 
-            // 配置回测参数
             Symbol symbol = Symbol.of("BTC-USDT");
             String intervalCode = configManager.getProperty("backtest.interval", Interval.FIFTEEN_MINUTES.getCode());
             Interval interval = Interval.fromCode(intervalCode);
@@ -77,23 +80,9 @@ public class TradingSystemMain {
                     .leverage(new BigDecimal(configManager.getProperty("backtest.leverage")))
                     .build();
 
-            // 创建交易所并从配置文件加载 API 密钥
-            Exchange exchange = ExchangeFactory.createBinance();
-            exchange.setApiKey(
-                configManager.getBinanceApiKey(),
-                configManager.getBinanceApiSecret(),
-                null
-            );
+            String exchangeName = configManager.getProperty("backtest.exchange", "binance");
+            Exchange exchange = createAndConfigureExchange(configManager, exchangeName);
 
-            // 🆕 设置代理（从配置文件读取）
-            if (configManager.isProxyEnabled()) {
-                String proxyHost = configManager.getProxyHost();
-                int proxyPort = configManager.getProxyPort();
-                System.out.println("使用代理: " + proxyHost + ":" + proxyPort);
-                exchange.setProxy(proxyHost, proxyPort);
-            }
-
-            // 创建策略（从配置文件加载参数）
             StrategyConfig strategyConfig = StrategyConfig.builder()
                     .riskPerTrade(new BigDecimal(configManager.getProperty("risk.per.trade")))
                     .cooldownBars(configManager.getIntProperty("strategy.cooldown.bars", 3))
@@ -101,23 +90,16 @@ public class TradingSystemMain {
                     .atrStopLossMultiplier(new BigDecimal("0.8"))
                     .build();
 
-            // ==================== 策略选择 ====================
-            // 使用 HFVS 策略（高频波动回归）
             BtcDonchian48BreakoutStrategy strategy = new BtcDonchian48BreakoutStrategy(
-                    symbol, interval, strategyConfig
+                    symbol, interval, strategyConfig, false
             );
 
-            // 如果想使用双均线策略，可以替换为：
-            // DualMovingAverageStrategy strategy = new DualMovingAverageStrategy(
-            //         symbol, interval, 10, 30, strategyConfig
-            // );
-
             System.out.println("使用策略: " + strategy.getName());
+            System.out.println("交易所: " + exchange.getName());
             System.out.println("交易对: " + symbol.toPairString());
             System.out.println("周期: " + interval.getCode());
             System.out.println();
 
-            // 运行回测
             BacktestTradeLogger tradeLogger = new BacktestTradeLogger("logs/backtest-trades.csv");
             BacktestEngine engine = new BacktestEngine(
                     config,
@@ -128,7 +110,6 @@ public class TradingSystemMain {
             );
             BacktestResult result = engine.run();
 
-            // 输出结果
             System.out.println(result);
 
         } catch (Exception e) {
@@ -138,73 +119,139 @@ public class TradingSystemMain {
     }
 
     /**
-     * 运行实盘
+     * 运行实盘。
      */
     private static void runLive() {
         System.out.println("启动实盘模式...\n");
-        System.out.println("警告: 实盘交易涉及真实资金，请确保:");
-        System.out.println("1. 已完成充分回测");
-        System.out.println("2. 风控参数已正确设置");
-        System.out.println("3. 有足够的资金承受损失");
-        System.out.print("\n确认启动实盘? (yes/no): ");
 
-        // 简化处理，实际应该读取用户输入
-        System.out.println("no");
-        System.out.println("已取消实盘启动");
-
-        /*
         try {
-            // 加载配置
             ConfigManager configManager = ConfigManager.getInstance();
 
-            // 创建交易所并从配置文件加载 API 密钥
-            Exchange exchange = ExchangeFactory.createBinance();
-            exchange.setApiKey(
-                    configManager.getBinanceApiKey(),
-                    configManager.getBinanceApiSecret(),
-                    null
-            );
+            String exchangeName = configManager.getProperty("live.exchange", "binance");
+            Symbol symbol = Symbol.of(configManager.getProperty("live.symbol", "BTC-USDT"));
+            String intervalCode = configManager.getProperty("live.interval", Interval.FIFTEEN_MINUTES.getCode());
+            Interval interval = Interval.fromCode(intervalCode);
+            int historyCount = configManager.getIntProperty("live.history.count", 200);
+            if (historyCount < 120) {
+                historyCount = 120;
+            }
 
-            // 创建行情管理器
+            Exchange exchange = createAndConfigureExchange(configManager, exchangeName);
+            System.out.println("实盘交易所: " + exchange.getName());
+            if (exchange instanceof BinanceExchange binance && binance.isTestnetEnabled()) {
+                System.out.println("当前运行在 Binance 模拟盘（Testnet）环境。");
+            } else if (exchange instanceof OkxExchange okx && okx.isDemoTradingEnabled()) {
+                System.out.println("当前运行在 OKX 模拟盘（Demo Trading）环境。");
+            }
+
+            if (exchange instanceof BinanceExchange binance) {
+                try {
+                    boolean dualSideMode = binance.isDualSidePositionEnabled();
+                    if (dualSideMode) {
+                        System.err.println("检测到 Binance 为双向持仓（Hedge）模式，当前系统仅支持单向持仓（One-way）模式。");
+                        System.err.println("请先切换为 One-way 模式后再启动实盘。");
+                        return;
+                    }
+                } catch (Exception e) {
+                    System.err.println("读取 Binance 持仓模式失败，拒绝启动实盘以避免风险: " + e.getMessage());
+                    return;
+                }
+
+                int leverage = configManager.getIntProperty("live.leverage", 1);
+                String marginType = configManager.getProperty("live.margin.type", "").trim();
+                if (leverage > 0) {
+                    try {
+                        binance.setLeverage(symbol, leverage);
+                        System.out.println("设置杠杆: " + leverage);
+                    } catch (Exception e) {
+                        System.out.println("设置杠杆失败: " + e.getMessage());
+                    }
+                }
+                if (!marginType.isEmpty()) {
+                    try {
+                        binance.setMarginType(symbol, marginType.toUpperCase());
+                        System.out.println("设置保证金模式: " + marginType.toUpperCase());
+                    } catch (Exception e) {
+                        System.out.println("设置保证金模式失败: " + e.getMessage());
+                    }
+                }
+            } else if (exchange instanceof OkxExchange okx) {
+                try {
+                    boolean longShortMode = okx.isLongShortModeEnabled();
+                    if (longShortMode) {
+                        System.err.println("检测到 OKX 为双向持仓（long_short_mode），当前系统仅支持单向持仓（net_mode）。");
+                        System.err.println("请先切换为 net_mode 后再启动实盘。");
+                        return;
+                    }
+                } catch (Exception e) {
+                    System.err.println("读取 OKX 持仓模式失败，拒绝启动实盘以避免风险: " + e.getMessage());
+                    return;
+                }
+
+                int leverage = configManager.getIntProperty("live.leverage", 1);
+                if (leverage > 0) {
+                    try {
+                        okx.setLeverage(symbol, leverage);
+                        System.out.println("设置杠杆: " + leverage);
+                    } catch (Exception e) {
+                        System.out.println("设置杠杆失败: " + e.getMessage());
+                    }
+                }
+            }
+
+            List<Position> openPositions = exchange.getOpenPositions(symbol);
+            boolean allowExistingPosition = configManager.getBooleanProperty("live.start.allow.existing.position", true);
+            if (!openPositions.isEmpty()) {
+                if (!allowExistingPosition) {
+                    System.err.println("检测到已有持仓，请先手动平仓后再启动实盘。");
+                    return;
+                }
+                System.out.println("检测到已有持仓，系统将继续启动，并自动接管仓位并补齐止损保护。");
+            }
+
             MarketDataManager marketDataManager = new MarketDataManager(exchange);
+            marketDataManager.initializeHistoricalData(symbol, interval, historyCount);
 
-            // 初始化历史数据
-            Symbol symbol = Symbol.of("BTC-USDT");
-            Interval interval = Interval.FIVE_MINUTES;
-            marketDataManager.initializeHistoricalData(symbol, interval, 1000);
-
-            // 创建策略（从配置文件加载参数）
             StrategyConfig strategyConfig = StrategyConfig.builder()
                     .riskPerTrade(new BigDecimal(configManager.getProperty("risk.per.trade")))
                     .cooldownBars(configManager.getIntProperty("strategy.cooldown.bars", 3))
                     .useATRStopLoss(configManager.getBooleanProperty("strategy.use.atr.stoploss", true))
                     .build();
 
-            DualMovingAverageStrategy strategy = new DualMovingAverageStrategy(
-                    symbol, interval, 10, 30, strategyConfig
-            );
+            BtcDonchian48BreakoutStrategy strategy = new BtcDonchian48BreakoutStrategy(symbol, interval, strategyConfig, true);
 
-            // 创建策略引擎
             StrategyEngine strategyEngine = new StrategyEngine(marketDataManager);
             strategyEngine.addStrategy(strategy);
 
-            // 创建风控
+            BigDecimal riskPerTrade = configManager.getBigDecimalProperty("risk.per.trade", new BigDecimal("0.01"));
+            BigDecimal maxDrawdownRatio = configManager.getBigDecimalProperty("risk.max.drawdown", new BigDecimal("0.30"));
+            BigDecimal maxPositionRatio = configManager.getBigDecimalProperty("risk.max.position.ratio", BigDecimal.ONE);
+            BigDecimal maxStopLossPercent = configManager.getBigDecimalProperty("risk.max.stop.loss.percent", new BigDecimal("50"));
+            BigDecimal marginBuffer = configManager.getBigDecimalProperty("risk.margin.buffer", new BigDecimal("1.2"));
+            int maxConsecutiveLosses = configManager.getIntProperty("risk.max.consecutive.losses", 3);
+            int maxPositionsPerSymbol = configManager.getIntProperty("risk.max.positions.per.symbol", 1);
+            BigDecimal leverage = configManager.getBigDecimalProperty("live.leverage", BigDecimal.ONE);
+
             RiskConfig riskConfig = RiskConfig.builder()
-                    .riskPerTrade(BigDecimal.valueOf(0.01))
-                    .maxDrawdownPercent(BigDecimal.valueOf(30))
+                    .riskPerTrade(riskPerTrade)
+                    .maxDrawdownPercent(maxDrawdownRatio.multiply(BigDecimal.valueOf(100)))
+                    .maxConsecutiveLosses(maxConsecutiveLosses)
+                    .maxPositionRatio(maxPositionRatio)
+                    .maxStopLossPercent(maxStopLossPercent)
+                    .defaultOrderType(OrderType.MARKET)
+                    .leverage(leverage)
                     .build();
+            riskConfig.setMarginBuffer(marginBuffer);
+            riskConfig.setMaxPositionsPerSymbol(maxPositionsPerSymbol);
 
             AccountInfo accountInfo = exchange.getAccountInfo();
             RiskControl riskControl = new RiskControl(riskConfig, accountInfo);
 
-            // 创建执行器
-            Persistence persistence = new FilePersistence("data/orders");
+            String orderDataDir = "data/orders/" + sanitizeDataDirSegment(exchange.getName());
+            Persistence persistence = new FilePersistence(orderDataDir);
             OrderExecutor orderExecutor = new OrderExecutor(exchange, persistence);
-
-            // 创建止损管理器
             StopLossManager stopLossManager = new StopLossManager(exchange);
 
-            // 创建交易引擎
             TradingEngine tradingEngine = new TradingEngine(
                     strategyEngine,
                     riskControl,
@@ -213,27 +260,61 @@ public class TradingSystemMain {
                     exchange
             );
 
-            // 启动
             tradingEngine.start();
 
             System.out.println("实盘交易已启动，按 Ctrl+C 退出...");
-
-            // 保持运行
             Thread.currentThread().join();
 
         } catch (Exception e) {
             System.err.println("实盘启动失败: " + e.getMessage());
             e.printStackTrace();
         }
-        */
     }
 
-    /**
-     * 打印使用说明
-     */
+    private static Exchange createAndConfigureExchange(ConfigManager configManager, String exchangeName) {
+        Exchange exchange = ExchangeFactory.createExchange(exchangeName);
+        if ("okx".equalsIgnoreCase(exchangeName)) {
+            exchange.setApiKey(
+                    configManager.getOkxApiKey(),
+                    configManager.getOkxApiSecret(),
+                    configManager.getOkxApiPassphrase()
+            );
+            if (exchange instanceof OkxExchange okx) {
+                boolean demoEnabled = configManager.getBooleanProperty("okx.demo.trading.enabled", false);
+                String demoRestBaseUrl = demoEnabled
+                        ? configManager.getProperty("okx.demo.rest.base.url", "")
+                        : "";
+                String demoWsPublicUrl = demoEnabled
+                        ? configManager.getProperty("okx.demo.ws.public.url", "")
+                        : "";
+                String demoWsBusinessUrl = demoEnabled
+                        ? configManager.getProperty("okx.demo.ws.business.url", "")
+                        : "";
+                okx.configureDemoTrading(demoEnabled, demoRestBaseUrl, demoWsPublicUrl, demoWsBusinessUrl);
+            }
+        } else {
+            exchange.setApiKey(
+                    configManager.getBinanceApiKey(),
+                    configManager.getBinanceApiSecret(),
+                    null
+            );
+            if (exchange instanceof BinanceExchange binance) {
+                boolean testnetEnabled = configManager.getBooleanProperty("binance.testnet.enabled", false);
+                String testnetRestBaseUrl = configManager.getProperty("binance.testnet.rest.base.url", "");
+                String testnetWsBaseUrl = configManager.getProperty("binance.testnet.ws.base.url", "");
+                binance.configureTestnet(testnetEnabled, testnetRestBaseUrl, testnetWsBaseUrl);
+            }
+        }
+
+        if (configManager.isProxyEnabled()) {
+            exchange.setProxy(configManager.getProxyHost(), configManager.getProxyPort());
+        }
+        return exchange;
+    }
+
     private static List<KLine> loadLocalKLinesIfPresent(ConfigManager configManager,
-                                                        Symbol symbol,
-                                                        Interval interval) {
+                                                         Symbol symbol,
+                                                         Interval interval) {
         String dataFile = configManager.getProperty("backtest.data.file", "").trim();
         if (dataFile.isEmpty()) {
             return null;
@@ -248,7 +329,7 @@ public class TradingSystemMain {
             System.out.println("使用本地数据文件: " + path.toAbsolutePath());
             return CsvKLineLoader.load(path, symbol, interval);
         } catch (Exception e) {
-            System.err.println("加载本地K线失败: " + e.getMessage());
+            System.err.println("加载本地 K 线失败: " + e.getMessage());
             return null;
         }
     }
@@ -260,18 +341,16 @@ public class TradingSystemMain {
         System.out.println();
         System.out.println("配置文件:");
         System.out.println("  首次运行会从 config.template.properties 创建 config.properties");
-        System.out.println("  请在 config.properties 中配置您的 API 密钥");
-        System.out.println();
-        System.out.println("配置项:");
-        System.out.println("  binance.api.key       Binance API Key");
-        System.out.println("  binance.api.secret    Binance API Secret");
-        System.out.println("  risk.per.trade        每笔交易风险比例 (如: 0.01 表示 1%)");
-        System.out.println("  backtest.start.time   回测开始时间 (如: 2024-01-01T00:00:00Z)");
-        System.out.println("  backtest.end.time     回测结束时间 (如: 2024-12-01T00:00:00Z)");
-        System.out.println();
-        System.out.println("安全提示:");
-        System.out.println("  - 请勿将 config.properties 提交到版本控制系统");
-        System.out.println("  - config.properties 已被 .gitignore 忽略");
-        System.out.println("  - 仅提交 config.template.properties 模板文件");
+        System.out.println("  请在 config.properties 中配置交易所密钥与 live.exchange");
+    }
+    private static String sanitizeDataDirSegment(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return "unknown";
+        }
+        String normalized = raw.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9._-]+", "-")
+                .replaceAll("^-+", "")
+                .replaceAll("-+$", "");
+        return normalized.isBlank() ? "unknown" : normalized;
     }
 }

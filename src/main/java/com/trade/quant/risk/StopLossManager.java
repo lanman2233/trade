@@ -46,9 +46,11 @@ public class StopLossManager {
      */
     public void remove(Symbol symbol) {
         String key = symbol.toPairString();
-        monitoredPositions.remove(key);
-        stopLossPrices.remove(key);
-        logger.info("移除止损监控: {}", symbol);
+        Position removedPosition = monitoredPositions.remove(key);
+        BigDecimal removedStop = stopLossPrices.remove(key);
+        if (removedPosition != null || removedStop != null) {
+            logger.info("移除止损监控: {}", symbol);
+        }
     }
 
     /**

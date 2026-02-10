@@ -7,7 +7,9 @@ import com.trade.quant.monitor.StrategyHealthChecker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -29,7 +31,8 @@ public class StrategyEngine {
     private final List<Strategy> strategies;
     private final MarketDataManager marketDataManager;
     private final List<SignalListener> signalListeners;
-    private final Map<String, Position> openPositions;
+    private volatile Map<String, Position> openPositions;
+    private final Map<String, Instant> lastBarOpenTime;
     private boolean running;
     private StrategyHealthChecker healthChecker;
 
@@ -37,7 +40,8 @@ public class StrategyEngine {
         this.strategies = new CopyOnWriteArrayList<>();
         this.marketDataManager = marketDataManager;
         this.signalListeners = new CopyOnWriteArrayList<>();
-        this.openPositions = new HashMap<>();
+        this.openPositions = new ConcurrentHashMap<>();
+        this.lastBarOpenTime = new ConcurrentHashMap<>();
         this.running = false;
     }
 
@@ -61,6 +65,7 @@ public class StrategyEngine {
      */
     public void removeStrategy(String strategyId) {
         strategies.removeIf(s -> s.getStrategyId().equals(strategyId));
+        lastBarOpenTime.remove(strategyId);
         logger.info("策略已移除: {}", strategyId);
     }
 
@@ -69,6 +74,10 @@ public class StrategyEngine {
      */
     public void addSignalListener(SignalListener listener) {
         signalListeners.add(listener);
+    }
+
+    public void removeSignalListener(SignalListener listener) {
+        signalListeners.remove(listener);
     }
 
     /**
@@ -129,11 +138,16 @@ public class StrategyEngine {
      * 更新持仓状态
      */
     public void updatePositions(List<Position> positions) {
-        openPositions.clear();
+        Map<String, Position> latestPositions = new ConcurrentHashMap<>();
+        if (positions == null) {
+            openPositions = latestPositions;
+            return;
+        }
         for (Position position : positions) {
             String key = position.getSymbol().toPairString();
-            openPositions.put(key, position);
+            latestPositions.put(key, position);
         }
+        openPositions = latestPositions;
     }
 
     /**
@@ -151,15 +165,16 @@ public class StrategyEngine {
      * 处理单个策略
      */
     private void processStrategy(Strategy strategy, KLine kLine) {
+        if (strategy instanceof AbstractStrategy abstractStrategy) {
+            Instant openTime = kLine.getOpenTime();
+            Instant previous = lastBarOpenTime.put(strategy.getStrategyId(), openTime);
+            if (previous == null || !previous.equals(openTime)) {
+                abstractStrategy.incrementBarCount();
+            }
+        }
         // 检查健康状态（如果已配置健康检查器）
         if (healthChecker != null && !healthChecker.isStrategyEnabled(strategy.getStrategyId())) {
             logger.debug("策略 {} 已禁用，跳过处理", strategy.getStrategyId());
-            return;
-        }
-
-        // 检查冷却期
-        if (strategy.isInCooldown()) {
-            logger.debug("策略 {} 处于冷却期，跳过", strategy.getStrategyId());
             return;
         }
 
@@ -176,8 +191,13 @@ public class StrategyEngine {
         Signal signal;
         if (position != null && !position.isClosed()) {
             // 有持仓，调用持仓更新方法
-            signal = strategy.onPositionUpdate(position, kLine);
+            signal = strategy.onPositionUpdate(position, kLine, kLines);
         } else {
+            // 冷却期只限制新开仓，不限制持仓管理与出场
+            if (strategy.isInCooldown()) {
+                logger.debug("策略 {} 处于冷却期，跳过新开仓", strategy.getStrategyId());
+                return;
+            }
             // 无持仓，分析市场数据
             signal = strategy.analyze(kLines);
         }

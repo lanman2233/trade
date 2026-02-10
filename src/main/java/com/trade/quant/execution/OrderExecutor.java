@@ -11,8 +11,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 订单执行器
- *
- * 职责：
  * 1. 幂等下单
  * 2. 订单状态跟踪
  * 3. 异常恢复
@@ -45,26 +43,21 @@ public class OrderExecutor {
      * 提交订单（幂等）
      */
     public String submitOrder(Order order) throws ExecutionException {
-        // 检查是否已存在
         if (pendingOrders.containsKey(order.getOrderId()) ||
             submittedOrders.containsKey(order.getOrderId())) {
             logger.warn("订单已存在，跳过: {}", order.getOrderId());
             return order.getOrderId();
         }
 
-        // 添加到待处理队列
         pendingOrders.put(order.getOrderId(), order);
         persistence.saveOrder(order);
 
         try {
-            // 提交到交易所
             String exchangeOrderId = exchange.placeOrder(order);
 
-            // 更新状态
             order.setStatus(OrderStatus.SUBMITTED);
             order.setExchangeOrderId(exchangeOrderId);
 
-            // 移动到已提交队列
             pendingOrders.remove(order.getOrderId());
             submittedOrders.put(order.getOrderId(), order);
             persistence.updateOrder(order);
@@ -75,7 +68,6 @@ public class OrderExecutor {
             return order.getOrderId();
 
         } catch (ExchangeException e) {
-            // 失败处理
             order.setStatus(OrderStatus.REJECTED);
             pendingOrders.remove(order.getOrderId());
             persistence.updateOrder(order);
@@ -97,7 +89,8 @@ public class OrderExecutor {
         }
 
         try {
-            boolean success = exchange.cancelOrder(orderId, order.getSymbol());
+            String exchangeOrderId = order.getExchangeOrderId() != null ? order.getExchangeOrderId() : orderId;
+            boolean success = exchange.cancelOrder(exchangeOrderId, order.getSymbol());
 
             if (success) {
                 order.setStatus(OrderStatus.CANCELLED);
@@ -126,9 +119,9 @@ public class OrderExecutor {
         }
 
         try {
-            Order updatedOrder = exchange.getOrder(orderId, order.getSymbol());
+            String exchangeOrderId = order.getExchangeOrderId() != null ? order.getExchangeOrderId() : orderId;
+            Order updatedOrder = exchange.getOrder(exchangeOrderId, order.getSymbol());
 
-            // 更新状态
             if (updatedOrder.getStatus() == OrderStatus.FILLED) {
                 order.setStatus(OrderStatus.FILLED);
                 order.setFilledQuantity(updatedOrder.getFilledQuantity());
@@ -177,12 +170,11 @@ public class OrderExecutor {
             } else if (order.getStatus() == OrderStatus.SUBMITTED ||
                      order.getStatus() == OrderStatus.PARTIAL) {
                 submittedOrders.put(order.getOrderId(), order);
-                // 异步查询状态
                 checkOrderStatus(order.getOrderId());
             }
         }
 
-        logger.info("恢复了 {} 个待处理订单", pendingOrders.size() + submittedOrders.size());
+        logger.info("恢复 {} 个待处理订单", pendingOrders.size() + submittedOrders.size());
     }
 
     /**

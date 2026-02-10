@@ -120,6 +120,7 @@ public class Signal {
                 .stopLoss(stopLoss)
                 .takeProfit(takeProfit)
                 .strategyId(strategyId)
+                .reduceOnly(isExit())
                 .build();
     }
 

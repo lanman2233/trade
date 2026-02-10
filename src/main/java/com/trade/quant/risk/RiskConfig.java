@@ -9,13 +9,14 @@ import java.math.BigDecimal;
 public class RiskConfig {
 
     private boolean tradingEnabled = true;
-    private BigDecimal riskPerTrade = BigDecimal.valueOf(0.01);        // 每笔交易风险（1%）
-    private BigDecimal maxPositionRatio = BigDecimal.valueOf(0.1);     // 最大仓位比例（10%）
-    private BigDecimal maxStopLossPercent = BigDecimal.valueOf(5);     // 最大止损百分比（5%）
+    private BigDecimal riskPerTrade = BigDecimal.valueOf(0.01);        // 每笔交易风险比例
+    private BigDecimal maxPositionRatio = BigDecimal.valueOf(0.1);     // 最大仓位比例
+    private BigDecimal maxStopLossPercent = BigDecimal.valueOf(5);     // 最大止损百分比
     private int maxConsecutiveLosses = 3;                              // 最大连续亏损次数
-    private BigDecimal maxDrawdownPercent = BigDecimal.valueOf(30);    // 最大回撤（30%）
+    private BigDecimal maxDrawdownPercent = BigDecimal.valueOf(30);    // 最大回撤百分比
     private int maxPositionsPerSymbol = 1;                             // 每个交易对最大持仓数
-    private BigDecimal marginBuffer = BigDecimal.valueOf(1.2);        // 保证金缓冲比例（120%）
+    private BigDecimal marginBuffer = BigDecimal.valueOf(1.2);         // 保证金缓冲比例
+    private BigDecimal leverage = BigDecimal.ONE;                      // 杠杆倍数（期货）
     private OrderType defaultOrderType = OrderType.MARKET;             // 默认订单类型
 
     public boolean isTradingEnabled() {
@@ -91,6 +92,18 @@ public class RiskConfig {
         this.marginBuffer = marginBuffer;
     }
 
+    public BigDecimal getLeverage() {
+        return leverage;
+    }
+
+    public void setLeverage(BigDecimal leverage) {
+        if (leverage == null || leverage.compareTo(BigDecimal.ZERO) <= 0) {
+            this.leverage = BigDecimal.ONE;
+        } else {
+            this.leverage = leverage;
+        }
+    }
+
     public OrderType getDefaultOrderType() {
         return defaultOrderType;
     }
@@ -133,6 +146,11 @@ public class RiskConfig {
 
         public Builder defaultOrderType(OrderType value) {
             config.setDefaultOrderType(value);
+            return this;
+        }
+
+        public Builder leverage(BigDecimal value) {
+            config.setLeverage(value);
             return this;
         }
 

@@ -7,7 +7,7 @@ import com.trade.quant.strategy.Signal;
 import com.trade.quant.strategy.TradeMetrics;
 
 /**
- * 鍥炴祴浜ゆ槗浜嬩欢鐩戝惉
+ * 回测交易事件监听
  */
 public interface BacktestTradeListener {
 

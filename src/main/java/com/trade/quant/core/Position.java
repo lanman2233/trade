@@ -14,7 +14,7 @@ public class Position {
     private BigDecimal quantity;        // 持仓数量（张）
     private BigDecimal unrealizedPnl;   // 未实现盈亏
     private BigDecimal realizedPnl;     // 已实现盈亏
-    private final BigDecimal stopLoss;  // 止损价格
+    private BigDecimal stopLoss;        // 止损价格（可动态更新，用于 trailing stop）
     private final Instant openTime;     // 开仓时间
     private BigDecimal leverage;        // 杠杆倍数
 
@@ -94,6 +94,16 @@ public class Position {
             throw new IllegalArgumentException("减仓数量不能超过当前持仓");
         }
         this.quantity = quantity.subtract(quantityToReduce);
+    }
+
+    /**
+     * 更新止损价格（用于动态 trailing stop）。
+     */
+    public void updateStopLoss(BigDecimal newStopLoss) {
+        if (newStopLoss == null || newStopLoss.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        this.stopLoss = newStopLoss;
     }
 
     /**
