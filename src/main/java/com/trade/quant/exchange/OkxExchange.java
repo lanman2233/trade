@@ -496,15 +496,22 @@ public class OkxExchange implements Exchange, ProtectiveStopCapableExchange {
             }
 
             List<KLine> kLines = new ArrayList<>();
+            Instant now = Instant.now();
             for (int i = data.size() - 1; i >= 0; i--) {
                 JsonNode row = data.get(i);
                 if (!row.isArray() || row.size() < 9) {
+                    continue;
+                }
+                if (!isFinalKLineRow(row)) {
                     continue;
                 }
                 Instant openTime = Instant.ofEpochMilli(parseLong(row.get(0).asText("0"), 0L));
                 Instant closeTime = openTime
                         .plus(interval.getMinutes(), ChronoUnit.MINUTES)
                         .minusMillis(1);
+                if (closeTime.isAfter(now)) {
+                    continue;
+                }
                 BigDecimal open = parseDecimal(row.get(1).asText("0"), BigDecimal.ZERO);
                 BigDecimal high = parseDecimal(row.get(2).asText("0"), BigDecimal.ZERO);
                 BigDecimal low = parseDecimal(row.get(3).asText("0"), BigDecimal.ZERO);
@@ -952,9 +959,15 @@ public class OkxExchange implements Exchange, ProtectiveStopCapableExchange {
         if (row == null || !row.isArray() || row.size() < 6) {
             return null;
         }
+        if (!isFinalKLineRow(row)) {
+            return null;
+        }
         SymbolRules rules = getSymbolRules(symbol);
         Instant openTime = Instant.ofEpochMilli(parseLong(row.get(0).asText("0"), 0L));
         Instant closeTime = openTime.plus(interval.getMinutes(), ChronoUnit.MINUTES).minusMillis(1);
+        if (closeTime.isAfter(Instant.now())) {
+            return null;
+        }
         BigDecimal open = parseDecimal(row.get(1).asText("0"), BigDecimal.ZERO);
         BigDecimal high = parseDecimal(row.get(2).asText("0"), BigDecimal.ZERO);
         BigDecimal low = parseDecimal(row.get(3).asText("0"), BigDecimal.ZERO);
@@ -978,6 +991,17 @@ public class OkxExchange implements Exchange, ProtectiveStopCapableExchange {
                 Decimal.scalePrice(volQuote),
                 0L
         );
+    }
+
+    private boolean isFinalKLineRow(JsonNode row) {
+        if (row == null || !row.isArray()) {
+            return false;
+        }
+        if (row.size() <= 8) {
+            return true;
+        }
+        String confirm = row.get(8).asText("1");
+        return "1".equals(confirm);
     }
 
     private Ticker parseTickerFromWs(Symbol symbol, JsonNode row) {

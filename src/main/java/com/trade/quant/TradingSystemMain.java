@@ -11,6 +11,9 @@ import com.trade.quant.exchange.Exchange;
 import com.trade.quant.exchange.ExchangeFactory;
 import com.trade.quant.exchange.OkxExchange;
 import com.trade.quant.execution.FilePersistence;
+import com.trade.quant.execution.notifier.NetworkAlertNotifier;
+import com.trade.quant.execution.notifier.NetworkAlertNotifierFactory;
+import com.trade.quant.execution.notifier.NoopNetworkAlertNotifier;
 import com.trade.quant.execution.OrderExecutor;
 import com.trade.quant.execution.Persistence;
 import com.trade.quant.execution.TradingEngine;
@@ -124,10 +127,12 @@ public class TradingSystemMain {
     private static void runLive() {
         System.out.println("启动实盘模式...\n");
 
+        NetworkAlertNotifier networkAlertNotifier = NoopNetworkAlertNotifier.INSTANCE;
         try {
             ConfigManager configManager = ConfigManager.getInstance();
 
             String exchangeName = configManager.getProperty("live.exchange", "binance");
+            networkAlertNotifier = NetworkAlertNotifierFactory.fromConfig(configManager, exchangeName);
             Symbol symbol = Symbol.of(configManager.getProperty("live.symbol", "BTC-USDT"));
             String intervalCode = configManager.getProperty("live.interval", Interval.FIFTEEN_MINUTES.getCode());
             Interval interval = Interval.fromCode(intervalCode);
@@ -257,7 +262,8 @@ public class TradingSystemMain {
                     riskControl,
                     orderExecutor,
                     stopLossManager,
-                    exchange
+                    exchange,
+                    networkAlertNotifier
             );
 
             tradingEngine.start();
@@ -268,6 +274,7 @@ public class TradingSystemMain {
         } catch (Exception e) {
             System.err.println("实盘启动失败: " + e.getMessage());
             e.printStackTrace();
+            networkAlertNotifier.notifyExchangeUnavailable("runLive.startup", e);
         }
     }
 

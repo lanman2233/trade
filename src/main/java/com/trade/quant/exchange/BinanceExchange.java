@@ -524,6 +524,7 @@ public class BinanceExchange implements Exchange, ProtectiveStopCapableExchange 
             JsonNode jsonArray = objectMapper.readTree(response);
 
             List<KLine> kLines = new ArrayList<>();
+            Instant now = Instant.now();
             for (JsonNode node : jsonArray) {
                 Instant openTime = Instant.ofEpochMilli(node.get(0).asLong());
                 BigDecimal open = new BigDecimal(node.get(1).asText());
@@ -532,6 +533,9 @@ public class BinanceExchange implements Exchange, ProtectiveStopCapableExchange 
                 BigDecimal close = new BigDecimal(node.get(4).asText());
                 BigDecimal volume = new BigDecimal(node.get(5).asText());
                 Instant closeTime = Instant.ofEpochMilli(node.get(6).asLong());
+                if (closeTime.isAfter(now)) {
+                    continue;
+                }
                 BigDecimal quoteVolume = new BigDecimal(node.get(7).asText());
                 long trades = node.get(8).asLong();
 
@@ -753,7 +757,9 @@ public class BinanceExchange implements Exchange, ProtectiveStopCapableExchange 
                         subscription.listener.onTicker(ticker);
                     } else {
                         KLine kLine = parseKLine(subscription.symbol, subscription.interval, text);
-                        subscription.listener.onKLine(kLine);
+                        if (kLine != null) {
+                            subscription.listener.onKLine(kLine);
+                        }
                     }
                 } catch (Exception e) {
                     subscription.listener.onError(e);
@@ -781,6 +787,12 @@ public class BinanceExchange implements Exchange, ProtectiveStopCapableExchange 
     private KLine parseKLine(Symbol symbol, Interval interval, String text) throws IOException {
         JsonNode json = objectMapper.readTree(text);
         JsonNode kline = json.get("k");
+        if (kline == null || kline.isNull()) {
+            return null;
+        }
+        if (!isFinalKLineEvent(kline)) {
+            return null;
+        }
         Instant openTime = Instant.ofEpochMilli(kline.get("t").asLong());
         BigDecimal open = new BigDecimal(kline.get("o").asText());
         BigDecimal high = new BigDecimal(kline.get("h").asText());
@@ -796,6 +808,14 @@ public class BinanceExchange implements Exchange, ProtectiveStopCapableExchange 
                 Decimal.scaleQuantity(volume),
                 BigDecimal.ZERO,
                 0);
+    }
+
+    private boolean isFinalKLineEvent(JsonNode kline) {
+        JsonNode closedNode = kline.get("x");
+        if (closedNode == null || closedNode.isNull()) {
+            return true;
+        }
+        return closedNode.asBoolean(false);
     }
 
     private Ticker parseTicker(Symbol symbol, String text) throws IOException {
